@@ -1,0 +1,90 @@
+.TH BRR 1 "January 2025" "brr 1.0.0" "User Commands"
+.SH NAME
+brr \- terminal speed reading tool using RSVP technique
+.SH SYNOPSIS
+.B brr
+[\fB\-w\fR \fIwpm\fR]
+.RI [ file ]
+.SH DESCRIPTION
+.B brr
+is a terminal-based speed reading tool that displays text one word at a time using the RSVP (Rapid Serial Visual Presentation) technique. Each word is displayed with its Optimal Recognition Point (ORP) highlighted in red, allowing for faster reading by reducing eye movement.
+.PP
+The tool accepts input from a file or standard input and allows real-time adjustment of reading speed through keyboard controls.
+.SH OPTIONS
+.TP
+.BR \-w ", " \-\-wpm " " \fIwpm\fR
+Set reading speed in words per minute (default: 300). Valid range is 100-1500 WPM.
+.TP
+.BR \-h ", " \-\-help
+Display help information and exit.
+.SH CONTROLS
+While reading, the following keyboard controls are available:
+.TP
+.B SPACE
+Pause or resume reading.
+.TP
+.BR + " or " =
+Increase reading speed by 50 WPM (up to 1500 WPM maximum).
+.TP
+.B \-
+Decrease reading speed by 50 WPM (down to 100 WPM minimum).
+.TP
+.BR q " or " Q
+Quit the application.
+.SH EXAMPLES
+.TP
+Read a file at default speed (300 WPM):
+.B brr article.txt
+.TP
+Read a file at 500 WPM:
+.B brr \-w 500 article.txt
+.TP
+Read from standard input:
+.B cat book.txt | brr
+.TP
+Read at high speed (900 WPM):
+.B brr \-w 900 article.txt
+.SH HOW IT WORKS
+The RSVP (Rapid Serial Visual Presentation) technique works by:
+.IP 1. 4
+Displaying words one at a time at a fixed position
+.IP 2. 4
+Highlighting the Optimal Recognition Point (typically 1/3 into the word)
+.IP 3. 4
+Eliminating the need for eye movement across lines
+.IP 4. 4
+Allowing focus purely on comprehension rather than tracking
+.PP
+This technique can significantly increase reading speed while maintaining comprehension. Most users can comfortably read at 400-600 WPM with practice.
+.SH TIPS
+.IP \(bu 2
+Start at 300 WPM and gradually increase speed as you become comfortable.
+.IP \(bu 2
+Keep your eyes focused on the center of the screen where words appear.
+.IP \(bu 2
+Don't try to "read ahead" or look around the screen.
+.IP \(bu 2
+Practice regularly to build speed and maintain comprehension.
+.IP \(bu 2
+Take breaks during long reading sessions to avoid eye strain.
+.SH EXIT STATUS
+.TP
+.B 0
+Successful completion or user quit.
+.TP
+.B 1
+An error occurred (file not found, invalid input, etc.).
+.SH REQUIREMENTS
+A terminal with ANSI color support is recommended for the best experience. The tool requires raw terminal mode support for interactive controls.
+.SH BUGS
+Report bugs at: https://github.com/metcalfc/brr/issues
+.SH AUTHOR
+Written by Chad Metcalf.
+.SH COPYRIGHT
+Copyright \(co 2025 Chad Metcalf.
+.br
+License: MIT
+.SH SEE ALSO
+.BR cat (1),
+.BR less (1),
+.BR more (1)
