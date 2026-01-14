@@ -12,7 +12,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Styles using lipgloss
 var (
 	erpStyle = lipgloss.NewStyle().
 			Bold(true).
@@ -41,7 +40,6 @@ var (
 			Bold(true)
 )
 
-// Model holds the state of the application
 type model struct {
 	words        []string
 	currentIndex int
@@ -52,15 +50,12 @@ type model struct {
 	height       int
 }
 
-// tickMsg is sent on each tick to advance to the next word
 type tickMsg time.Time
 
-// Init initializes the model
 func (m model) Init() tea.Cmd {
 	return tick(m.getDelay())
 }
 
-// Update handles messages
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -112,7 +107,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// View renders the UI
 func (m model) View() string {
 	if m.quitting {
 		if m.currentIndex >= len(m.words)-1 {
@@ -125,16 +119,12 @@ func (m model) View() string {
 		return "No text to read."
 	}
 
-	// Get current word
 	word := m.words[m.currentIndex]
+	formatted := formatWord(word)
 
-	// Format the word with ORP highlighting
-	formattedWord := formatWord(word)
-
-	// Create status line
-	pausedText := ""
+	pause := ""
 	if m.paused {
-		pausedText = pausedStyle.Render(" [PAUSED]")
+		pause = pausedStyle.Render(" [PAUSED]")
 	}
 
 	status := statusStyle.Render(
@@ -142,59 +132,46 @@ func (m model) View() string {
 			m.currentIndex+1,
 			len(m.words),
 			m.wpm,
-			pausedText,
+			pause,
 		),
 	)
 
-	// Create controls line
 	controls := controlsStyle.Render("SPACE: pause/play  +/-: speed  Q: quit")
 
-	// Calculate vertical centering for the word only
 	// Reserve 2 lines: 1 for status at top, 1 for controls at bottom
-	availableHeight := m.height - 2
-	if availableHeight < 1 {
-		availableHeight = 1
+	avail := m.height - 2
+	if avail < 1 {
+		avail = 1
 	}
-	vPadding := availableHeight / 2
-	if vPadding < 0 {
-		vPadding = 0
+	vPad := avail / 2
+	if vPad < 0 {
+		vPad = 0
 	}
 
-	// Build the complete view
 	var sb strings.Builder
 
-	// Status at very top
 	sb.WriteString(status)
 	sb.WriteString("\n")
 
-	// Padding before word
-	for i := 0; i < vPadding; i++ {
+	for i := 0; i < vPad; i++ {
 		sb.WriteString("\n")
 	}
 
-	// Anchor the ORP character at a fixed position
-	wordLine := anchorORPText(formattedWord, word, m.width)
-	sb.WriteString(wordLine)
+	line := anchorORPText(formatted, word, m.width)
+	sb.WriteString(line)
 
-	// Padding after word (to push controls to bottom)
-	remainingLines := availableHeight - vPadding
-	for i := 0; i < remainingLines; i++ {
+	remaining := avail - vPad
+	for i := 0; i < remaining; i++ {
 		sb.WriteString("\n")
 	}
 
-	// Controls at very bottom
 	sb.WriteString(controls)
 
 	return sb.String()
 }
 
-// formatWord formats a word with ORP highlighting using lipgloss
 func formatWord(word string) string {
 	orp := getORPPosition(word)
-
-	if orp >= len(word) {
-		orp = len(word) - 1
-	}
 
 	before := word[:orp]
 	focus := string(word[orp])
@@ -208,7 +185,6 @@ func formatWord(word string) string {
 		wordAfterStyle.Render(after)
 }
 
-// getORPPosition calculates the Optimal Recognition Point position
 func getORPPosition(word string) int {
 	length := len(word)
 	if length <= 1 {
@@ -219,42 +195,30 @@ func getORPPosition(word string) int {
 	return length / 3
 }
 
-// anchorORPText positions text so the ORP character is at a fixed anchor point
-func anchorORPText(formattedText string, originalWord string, width int) string {
-	// Calculate the fixed anchor point (center of screen)
-	anchorPoint := width / 2
-
-	// Find the ORP position in the original word
-	orpPos := getORPPosition(originalWord)
-
-	// Calculate padding needed to position ORP at anchor point
-	// The ORP should be at position: padding + orpPos = anchorPoint
-	padding := anchorPoint - orpPos
-	if padding < 0 {
-		padding = 0
+func anchorORPText(text string, word string, width int) string {
+	anchor := width / 2
+	orp := getORPPosition(word)
+	pad := anchor - orp
+	if pad < 0 {
+		pad = 0
 	}
-
-	return strings.Repeat(" ", padding) + formattedText
+	return strings.Repeat(" ", pad) + text
 }
 
-// getDelay calculates delay between words based on WPM
 func (m model) getDelay() time.Duration {
 	return time.Duration(60.0/float64(m.wpm)*1000) * time.Millisecond
 }
 
-// tick creates a tick command with the given delay
 func tick(d time.Duration) tea.Cmd {
 	return tea.Tick(d, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
 }
 
-// parseText splits text into words
 func parseText(text string) []string {
 	return strings.Fields(text)
 }
 
-// newModel creates a new model
 func newModel(text string, wpm int) model {
 	return model{
 		words:        parseText(text),
@@ -268,7 +232,6 @@ func newModel(text string, wpm int) model {
 }
 
 func main() {
-	// Command line flags
 	wpm := flag.Int("w", 300, "Words per minute (default: 300)")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Brr - Terminal Speed Reading Tool\n\n")
@@ -290,9 +253,7 @@ func main() {
 
 	var text string
 
-	// Read text from file or stdin
 	if flag.NArg() > 0 {
-		// Read from file
 		filename := flag.Arg(0)
 		data, err := os.ReadFile(filename)
 		if err != nil {
@@ -301,7 +262,6 @@ func main() {
 		}
 		text = string(data)
 	} else {
-		// Check if stdin is from terminal
 		stat, _ := os.Stdin.Stat()
 		if (stat.Mode() & os.ModeCharDevice) != 0 {
 			fmt.Fprintln(os.Stderr, "Error: No input provided. Provide a file or pipe text to stdin.")
@@ -309,7 +269,6 @@ func main() {
 			os.Exit(1)
 		}
 
-		// Read from stdin
 		data, err := io.ReadAll(os.Stdin)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
@@ -318,13 +277,11 @@ func main() {
 		text = string(data)
 	}
 
-	// Validate text
 	if strings.TrimSpace(text) == "" {
 		fmt.Fprintln(os.Stderr, "Error: No text to read.")
 		os.Exit(1)
 	}
 
-	// Create and run the bubbletea program
 	m := newModel(text, *wpm)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
