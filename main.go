@@ -172,8 +172,8 @@ func (m model) View() string {
 		sb.WriteString("\n")
 	}
 
-	// Centered word
-	wordLine := centerText(formattedWord, m.width)
+	// Anchor the ORP character at a fixed position
+	wordLine := anchorORPText(formattedWord, word, m.width)
 	sb.WriteString(wordLine)
 
 	// Padding after word (to push controls to bottom)
@@ -219,16 +219,22 @@ func getORPPosition(word string) int {
 	return length / 3
 }
 
-// centerText centers text in the given width
-func centerText(text string, width int) string {
-	// Strip ANSI codes for length calculation
-	visualLength := lipgloss.Width(text)
-	if visualLength >= width {
-		return text
+// anchorORPText positions text so the ORP character is at a fixed anchor point
+func anchorORPText(formattedText string, originalWord string, width int) string {
+	// Calculate the fixed anchor point (center of screen)
+	anchorPoint := width / 2
+
+	// Find the ORP position in the original word
+	orpPos := getORPPosition(originalWord)
+
+	// Calculate padding needed to position ORP at anchor point
+	// The ORP should be at position: padding + orpPos = anchorPoint
+	padding := anchorPoint - orpPos
+	if padding < 0 {
+		padding = 0
 	}
 
-	padding := (width - visualLength) / 2
-	return strings.Repeat(" ", padding) + text
+	return strings.Repeat(" ", padding) + formattedText
 }
 
 // getDelay calculates delay between words based on WPM

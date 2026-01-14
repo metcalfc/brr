@@ -335,23 +335,28 @@ func TestModelView(t *testing.T) {
 	})
 }
 
-func TestCenterText(t *testing.T) {
+func TestAnchorORPText(t *testing.T) {
 	tests := []struct {
-		name  string
-		text  string
-		width int
+		name         string
+		originalWord string
+		width        int
 	}{
-		{"short text", "hello", 20},
-		{"exact width", "hello", 5},
-		{"longer than width", "hello world", 5},
+		{"short word", "hello", 80},
+		{"single char", "a", 80},
+		{"long word", "extraordinary", 80},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := centerText(tt.text, tt.width)
+			formattedText := formatWord(tt.originalWord)
+			result := anchorORPText(formattedText, tt.originalWord, tt.width)
 			// Just check we get a result
-			if result == "" && tt.text != "" {
-				t.Error("centerText should return non-empty result")
+			if result == "" && tt.originalWord != "" {
+				t.Error("anchorORPText should return non-empty result")
+			}
+			// The result should contain the original word
+			if !strings.Contains(result, string(tt.originalWord[0])) {
+				t.Error("anchorORPText should contain the original word")
 			}
 		})
 	}
