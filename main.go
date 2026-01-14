@@ -41,13 +41,15 @@ var (
 )
 
 type model struct {
-	words        []string
-	currentIndex int
-	wpm          int
-	paused       bool
-	quitting     bool
-	width        int
-	height       int
+	words          []string
+	sentenceStarts []int
+	currentIndex   int
+	wpm            int
+	paused         bool
+	quitting       bool
+	width          int
+	height         int
+	lastArrowPress time.Time
 }
 
 type tickMsg time.Time
@@ -77,6 +79,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.wpm > 100 {
 				m.wpm -= 50
 			}
+			return m, nil
+
+		case "up":
+			if m.wpm < 1500 {
+				m.wpm += 50
+			}
+			return m, nil
+
+		case "down":
+			if m.wpm > 100 {
+				m.wpm -= 50
+			}
+			return m, nil
+
+		case "left":
+			now := time.Now()
+			if now.Sub(m.lastArrowPress) > 500*time.Millisecond {
+				m.paused = true
+			}
+			m.lastArrowPress = now
+			m.jumpToPrevSentence()
+			return m, nil
+
+		case "right":
+			now := time.Now()
+			if now.Sub(m.lastArrowPress) > 500*time.Millisecond {
+				m.paused = true
+			}
+			m.lastArrowPress = now
+			m.jumpToNextSentence()
 			return m, nil
 
 		case "q", "Q", "ctrl+c":
@@ -136,7 +168,7 @@ func (m model) View() string {
 		),
 	)
 
-	controls := controlsStyle.Render("SPACE: pause/play  +/-: speed  Q: quit")
+	controls := controlsStyle.Render("SPACE: pause/play  ↑/↓: speed  ←/→: sentence  Q: quit")
 
 	// Reserve 2 lines: 1 for status at top, 1 for controls at bottom
 	avail := m.height - 2
@@ -219,15 +251,55 @@ func parseText(text string) []string {
 	return strings.Fields(text)
 }
 
+func findSentenceStarts(words []string) []int {
+	starts := []int{0}
+	for i, word := range words {
+		if len(word) > 0 {
+			last := word[len(word)-1]
+			if last == '.' || last == '!' || last == '?' {
+				if i+1 < len(words) {
+					starts = append(starts, i+1)
+				}
+			}
+		}
+	}
+	return starts
+}
+
+func (m *model) jumpToPrevSentence() {
+	for i := len(m.sentenceStarts) - 1; i >= 0; i-- {
+		if m.sentenceStarts[i] < m.currentIndex {
+			m.currentIndex = m.sentenceStarts[i]
+			return
+		}
+	}
+	m.currentIndex = 0
+}
+
+func (m *model) jumpToNextSentence() {
+	for i := 0; i < len(m.sentenceStarts); i++ {
+		if m.sentenceStarts[i] > m.currentIndex {
+			m.currentIndex = m.sentenceStarts[i]
+			return
+		}
+	}
+	if len(m.words) > 0 {
+		m.currentIndex = len(m.words) - 1
+	}
+}
+
 func newModel(text string, wpm int) model {
+	words := parseText(text)
 	return model{
-		words:        parseText(text),
-		currentIndex: 0,
-		wpm:          wpm,
-		paused:       false,
-		quitting:     false,
-		width:        80,
-		height:       24,
+		words:          words,
+		sentenceStarts: findSentenceStarts(words),
+		currentIndex:   0,
+		wpm:            wpm,
+		paused:         false,
+		quitting:       false,
+		width:          80,
+		height:         24,
+		lastArrowPress: time.Time{},
 	}
 }
 
@@ -247,6 +319,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "\nControls:\n")
 		fmt.Fprintf(os.Stderr, "  SPACE    Pause/play\n")
 		fmt.Fprintf(os.Stderr, "  +/-      Increase/decrease speed by 50 WPM\n")
+		fmt.Fprintf(os.Stderr, "  ↑/↓      Increase/decrease speed by 50 WPM\n")
+		fmt.Fprintf(os.Stderr, "  ←/→      Jump to previous/next sentence\n")
 		fmt.Fprintf(os.Stderr, "  Q        Quit\n")
 	}
 	flag.Parse()
