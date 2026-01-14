@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"io"
@@ -9,40 +8,204 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/term"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
-// ANSI color codes
-const (
-	colorRed   = "\033[91m"
-	colorBold  = "\033[1m"
-	colorReset = "\033[0m"
+// Styles using lipgloss
+var (
+	erpStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#FF0000"))
+
+	wordBeforeStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FFFFFF"))
+
+	wordAfterStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FFFFFF"))
+
+	statusStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#888888")).
+			Padding(0, 1)
+
+	controlsStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#666666")).
+			Italic(true)
+
+	pausedStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FFAA00")).
+			Bold(true)
+
+	completeStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#00FF00")).
+			Bold(true)
 )
 
-// SpeedReader manages the speed reading session
-type SpeedReader struct {
+// Model holds the state of the application
+type model struct {
 	words        []string
-	wpm          int
 	currentIndex int
+	wpm          int
 	paused       bool
-	running      bool
-	oldState     *term.State
+	quitting     bool
+	width        int
+	height       int
 }
 
-// NewSpeedReader creates a new speed reader instance
-func NewSpeedReader(text string, wpm int) *SpeedReader {
-	return &SpeedReader{
-		words:        parseText(text),
-		wpm:          wpm,
-		currentIndex: 0,
-		paused:       false,
-		running:      true,
+// tickMsg is sent on each tick to advance to the next word
+type tickMsg time.Time
+
+// Init initializes the model
+func (m model) Init() tea.Cmd {
+	return tick(m.getDelay())
+}
+
+// Update handles messages
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case " ":
+			m.paused = !m.paused
+			if !m.paused {
+				return m, tick(m.getDelay())
+			}
+			return m, nil
+
+		case "+", "=":
+			if m.wpm < 1500 {
+				m.wpm += 50
+			}
+			return m, nil
+
+		case "-":
+			if m.wpm > 100 {
+				m.wpm -= 50
+			}
+			return m, nil
+
+		case "q", "Q", "ctrl+c":
+			m.quitting = true
+			return m, tea.Quit
+		}
+
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
+	case tickMsg:
+		if m.paused {
+			return m, nil
+		}
+
+		if m.currentIndex < len(m.words)-1 {
+			m.currentIndex++
+			return m, tick(m.getDelay())
+		}
+
+		// Reached the end
+		m.quitting = true
+		return m, tea.Quit
 	}
+
+	return m, nil
 }
 
-// parseText splits text into words
-func parseText(text string) []string {
-	return strings.Fields(text)
+// View renders the UI
+func (m model) View() string {
+	if m.quitting {
+		if m.currentIndex >= len(m.words)-1 {
+			return completeStyle.Render("\n  Reading complete!\n")
+		}
+		return ""
+	}
+
+	if len(m.words) == 0 {
+		return "No text to read."
+	}
+
+	// Get current word
+	word := m.words[m.currentIndex]
+
+	// Format the word with ORP highlighting
+	formattedWord := formatWord(word)
+
+	// Create status line
+	pausedText := ""
+	if m.paused {
+		pausedText = pausedStyle.Render(" [PAUSED]")
+	}
+
+	status := statusStyle.Render(
+		fmt.Sprintf("Word %d/%d | %d WPM%s",
+			m.currentIndex+1,
+			len(m.words),
+			m.wpm,
+			pausedText,
+		),
+	)
+
+	// Create controls line
+	controls := controlsStyle.Render("SPACE: pause/play  +/-: speed  Q: quit")
+
+	// Calculate vertical centering for the word only
+	// Reserve 2 lines: 1 for status at top, 1 for controls at bottom
+	availableHeight := m.height - 2
+	if availableHeight < 1 {
+		availableHeight = 1
+	}
+	vPadding := availableHeight / 2
+	if vPadding < 0 {
+		vPadding = 0
+	}
+
+	// Build the complete view
+	var sb strings.Builder
+
+	// Status at very top
+	sb.WriteString(status)
+	sb.WriteString("\n")
+
+	// Padding before word
+	for i := 0; i < vPadding; i++ {
+		sb.WriteString("\n")
+	}
+
+	// Centered word
+	wordLine := centerText(formattedWord, m.width)
+	sb.WriteString(wordLine)
+
+	// Padding after word (to push controls to bottom)
+	remainingLines := availableHeight - vPadding
+	for i := 0; i < remainingLines; i++ {
+		sb.WriteString("\n")
+	}
+
+	// Controls at very bottom
+	sb.WriteString(controls)
+
+	return sb.String()
+}
+
+// formatWord formats a word with ORP highlighting using lipgloss
+func formatWord(word string) string {
+	orp := getORPPosition(word)
+
+	if orp >= len(word) {
+		orp = len(word) - 1
+	}
+
+	before := word[:orp]
+	focus := string(word[orp])
+	after := ""
+	if orp+1 < len(word) {
+		after = word[orp+1:]
+	}
+
+	return wordBeforeStyle.Render(before) +
+		erpStyle.Render(focus) +
+		wordAfterStyle.Render(after)
 }
 
 // getORPPosition calculates the Optimal Recognition Point position
@@ -56,183 +219,46 @@ func getORPPosition(word string) int {
 	return length / 3
 }
 
-// formatWord formats a word with ORP character highlighted in red
-func formatWord(word string) string {
-	orp := getORPPosition(word)
-	if orp >= len(word) {
-		orp = len(word) - 1
+// centerText centers text in the given width
+func centerText(text string, width int) string {
+	// Strip ANSI codes for length calculation
+	visualLength := lipgloss.Width(text)
+	if visualLength >= width {
+		return text
 	}
 
-	before := word[:orp]
-	focus := string(word[orp])
-	after := ""
-	if orp+1 < len(word) {
-		after = word[orp+1:]
-	}
-
-	return fmt.Sprintf("%s%s%s%s%s%s", before, colorRed, colorBold, focus, colorReset, after)
-}
-
-// clearScreen clears the terminal screen
-func clearScreen() {
-	fmt.Print("\033[2J\033[H")
-}
-
-// getTerminalSize returns terminal dimensions
-func getTerminalSize() (width, height int) {
-	width, height, err := term.GetSize(int(os.Stdout.Fd()))
-	if err != nil {
-		return 80, 24
-	}
-	return width, height
-}
-
-// displayWord displays a single word centered on screen
-func (sr *SpeedReader) displayWord(word string, info string) {
-	clearScreen()
-
-	cols, rows := getTerminalSize()
-
-	// Display info at top
-	fmt.Printf("\033[1;1H%s", info)
-
-	// Display word at center
-	vCenter := rows / 2
-	visualLength := len(word) // Visual length of the word without ANSI codes
-	hCenter := (cols - visualLength) / 2
-
-	formattedWord := formatWord(word)
-	fmt.Printf("\033[%d;%dH%s", vCenter, hCenter, formattedWord)
-
-	// Display controls at bottom
-	controls := "SPACE: pause/play  +/-: speed  Q: quit"
-	fmt.Printf("\033[%d;1H%s", rows, controls)
+	padding := (width - visualLength) / 2
+	return strings.Repeat(" ", padding) + text
 }
 
 // getDelay calculates delay between words based on WPM
-func (sr *SpeedReader) getDelay() time.Duration {
-	return time.Duration(60.0/float64(sr.wpm)*1000) * time.Millisecond
+func (m model) getDelay() time.Duration {
+	return time.Duration(60.0/float64(m.wpm)*1000) * time.Millisecond
 }
 
-// handleInput processes keyboard input
-func (sr *SpeedReader) handleInput(key byte) {
-	switch key {
-	case ' ':
-		sr.paused = !sr.paused
-	case '+', '=':
-		if sr.wpm < 1500 {
-			sr.wpm += 50
-		}
-	case '-':
-		if sr.wpm > 100 {
-			sr.wpm -= 50
-		}
-	case 'q', 'Q', 3: // q, Q, or Ctrl+C
-		sr.running = false
-	}
+// tick creates a tick command with the given delay
+func tick(d time.Duration) tea.Cmd {
+	return tea.Tick(d, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
 }
 
-// startInputReader starts a goroutine that continuously reads from stdin
-func startInputReader() chan byte {
-	keyCh := make(chan byte, 10) // Buffered channel to avoid missing keys
-
-	go func() {
-		var buf [1]byte
-		for {
-			n, err := os.Stdin.Read(buf[:])
-			if err != nil {
-				close(keyCh)
-				return
-			}
-			if n > 0 {
-				keyCh <- buf[0]
-			}
-		}
-	}()
-
-	return keyCh
+// parseText splits text into words
+func parseText(text string) []string {
+	return strings.Fields(text)
 }
 
-// Read starts the main reading loop
-func (sr *SpeedReader) Read() error {
-	// Set terminal to raw mode
-	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
-	if err != nil {
-		return fmt.Errorf("failed to set raw mode: %w", err)
+// newModel creates a new model
+func newModel(text string, wpm int) model {
+	return model{
+		words:        parseText(text),
+		currentIndex: 0,
+		wpm:          wpm,
+		paused:       false,
+		quitting:     false,
+		width:        80,
+		height:       24,
 	}
-	sr.oldState = oldState
-
-	defer func() {
-		// Restore terminal
-		term.Restore(int(os.Stdin.Fd()), sr.oldState)
-		clearScreen()
-	}()
-
-	// Start input reader goroutine
-	keyCh := startInputReader()
-
-	// Create ticker for timing
-	checkInterval := 10 * time.Millisecond
-	ticker := time.NewTicker(checkInterval)
-	defer ticker.Stop()
-
-	for sr.running && sr.currentIndex < len(sr.words) {
-		word := sr.words[sr.currentIndex]
-
-		// Display status info
-		pausedText := ""
-		if sr.paused {
-			pausedText = " | PAUSED"
-		}
-		progress := fmt.Sprintf("Word %d/%d | %d WPM%s",
-			sr.currentIndex+1, len(sr.words), sr.wpm, pausedText)
-
-		sr.displayWord(word, progress)
-
-		// Wait for delay or process input
-		delay := sr.getDelay()
-		elapsed := time.Duration(0)
-
-		for elapsed < delay && sr.running {
-			select {
-			case key, ok := <-keyCh:
-				if !ok {
-					// Input channel closed
-					sr.running = false
-					break
-				}
-				sr.handleInput(key)
-				if !sr.running {
-					break
-				}
-				// Redisplay with updated state
-				pausedText = ""
-				if sr.paused {
-					pausedText = " | PAUSED"
-				}
-				progress = fmt.Sprintf("Word %d/%d | %d WPM%s",
-					sr.currentIndex+1, len(sr.words), sr.wpm, pausedText)
-				sr.displayWord(word, progress)
-
-			case <-ticker.C:
-				if !sr.paused {
-					elapsed += checkInterval
-				}
-			}
-		}
-
-		if !sr.paused && sr.running {
-			sr.currentIndex++
-		}
-	}
-
-	// Show completion message
-	if sr.running {
-		clearScreen()
-		fmt.Println("\n\n  Reading complete!")
-	}
-
-	return nil
 }
 
 func main() {
@@ -270,27 +296,20 @@ func main() {
 		text = string(data)
 	} else {
 		// Check if stdin is from terminal
-		if term.IsTerminal(int(os.Stdin.Fd())) {
+		stat, _ := os.Stdin.Stat()
+		if (stat.Mode() & os.ModeCharDevice) != 0 {
 			fmt.Fprintln(os.Stderr, "Error: No input provided. Provide a file or pipe text to stdin.")
 			fmt.Fprintln(os.Stderr, "Try: brr -h")
 			os.Exit(1)
 		}
 
 		// Read from stdin
-		reader := bufio.NewReader(os.Stdin)
-		var sb strings.Builder
-		for {
-			line, err := reader.ReadString('\n')
-			sb.WriteString(line)
-			if err != nil {
-				if err == io.EOF {
-					break
-				}
-				fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
-				os.Exit(1)
-			}
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
+			os.Exit(1)
 		}
-		text = sb.String()
+		text = string(data)
 	}
 
 	// Validate text
@@ -299,9 +318,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Start speed reading
-	reader := NewSpeedReader(text, *wpm)
-	if err := reader.Read(); err != nil {
+	// Create and run the bubbletea program
+	m := newModel(text, *wpm)
+	p := tea.NewProgram(m, tea.WithAltScreen())
+
+	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
