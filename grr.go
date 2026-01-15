@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"image/color"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -127,23 +128,45 @@ func (l *centerVerticalLayout) Layout(objects []fyne.CanvasObject, size fyne.Siz
 
 func main() {
 	wpm := flag.Int("w", 300, "Words per minute")
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Grr - GUI Speed Reading Tool\n\n")
+		fmt.Fprintf(os.Stderr, "Usage:\n")
+		fmt.Fprintf(os.Stderr, "  grr [options] [file]\n\n")
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		flag.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nExamples:\n")
+		fmt.Fprintf(os.Stderr, "  grr file.txt              Read from file at 300 WPM\n")
+		fmt.Fprintf(os.Stderr, "  grr -w 500 file.txt       Read from file at 500 WPM\n")
+		fmt.Fprintf(os.Stderr, "  cat file.txt | grr        Read from stdin\n")
+	}
 	flag.Parse()
 
-	if flag.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "Usage: grr [options] <file>")
-		fmt.Fprintln(os.Stderr, "Options:")
-		flag.PrintDefaults()
-		os.Exit(1)
+	var text string
+
+	if flag.NArg() > 0 {
+		filename := flag.Arg(0)
+		data, err := os.ReadFile(filename)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: Failed to read file '%s': %v\n", filename, err)
+			os.Exit(1)
+		}
+		text = string(data)
+	} else {
+		stat, _ := os.Stdin.Stat()
+		if (stat.Mode() & os.ModeCharDevice) != 0 {
+			fmt.Fprintln(os.Stderr, "Error: No input provided. Provide a file or pipe text to stdin.")
+			fmt.Fprintln(os.Stderr, "Try: grr -h")
+			os.Exit(1)
+		}
+
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
+			os.Exit(1)
+		}
+		text = string(data)
 	}
 
-	filename := flag.Arg(0)
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to read file '%s': %v\n", filename, err)
-		os.Exit(1)
-	}
-
-	text := string(data)
 	if strings.TrimSpace(text) == "" {
 		fmt.Fprintln(os.Stderr, "Error: No text to read.")
 		os.Exit(1)
