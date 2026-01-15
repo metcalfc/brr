@@ -10,9 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/metcalfc/brr/internal/reader"
+	"github.com/metcalfc/brr/internal/state"
 )
 
 // Version info (injected via ldflags)
@@ -48,13 +50,36 @@ var (
 	completeStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#00FF00")).
 			Bold(true)
+
+	tocPanelStyle = lipgloss.NewStyle().
+			BorderStyle(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#666666")).
+			Padding(0, 1)
+
+	tocTitleStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FFAA00")).
+			Bold(true)
 )
+
+// tocItem implements list.Item for the TOC list
+type tocItem struct {
+	entry reader.TOCEntry
+}
+
+func (i tocItem) Title() string       { return i.entry.Title }
+func (i tocItem) Description() string { return i.entry.Preview }
+func (i tocItem) FilterValue() string { return i.entry.Title }
 
 type model struct {
 	*reader.Reader
-	quitting bool
-	width    int
-	height   int
+	quitting   bool
+	width      int
+	height     int
+	tocVisible bool
+	tocList    list.Model
+	sourceFile string
+	stateStore *state.StateStore
+	fileHash   string
 }
 
 type tickMsg time.Time
@@ -64,6 +89,11 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Handle TOC panel input when visible
+	if m.tocVisible {
+		return m.updateTOC(msg)
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -116,7 +146,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.JumpToNextSentence()
 			return m, nil
 
+		case "t":
+			// Toggle TOC panel if we have TOC entries
+			if len(m.TOC) > 0 {
+				m.tocVisible = true
+				m.Paused = true
+			}
+			return m, nil
+
+		case "r":
+			// Restart from beginning
+			m.CurrentIndex = 0
+			if m.stateStore != nil && m.fileHash != "" {
+				m.stateStore.Clear(m.fileHash)
+			}
+			return m, nil
+
 		case "q", "Q", "ctrl+c":
+			// Save position before quitting
+			m.savePosition()
 			m.quitting = true
 			return m, tea.Quit
 		}
@@ -124,6 +172,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		// Update TOC list dimensions
+		m.tocList.SetSize(m.width/3-4, m.height-4)
 		return m, nil
 
 	case tickMsg:
@@ -135,12 +185,50 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tick(m.GetDelay())
 		}
 
-		// Reached the end
+		// Reached the end - save and quit
+		m.savePosition()
 		m.quitting = true
 		return m, tea.Quit
 	}
 
 	return m, nil
+}
+
+func (m model) updateTOC(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "enter":
+			// Jump to selected chapter
+			if item, ok := m.tocList.SelectedItem().(tocItem); ok {
+				m.JumpToChapter(item.entry.WordIndex)
+			}
+			m.tocVisible = false
+			return m, nil
+
+		case "t", "esc", "q":
+			// Close TOC panel
+			m.tocVisible = false
+			return m, nil
+		}
+
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m.tocList.SetSize(m.width/3-4, m.height-4)
+		return m, nil
+	}
+
+	// Pass other messages to the list
+	var cmd tea.Cmd
+	m.tocList, cmd = m.tocList.Update(msg)
+	return m, cmd
+}
+
+func (m *model) savePosition() {
+	if m.stateStore != nil && m.fileHash != "" {
+		m.stateStore.SetPosition(m.fileHash, m.CurrentIndex)
+	}
 }
 
 func (m model) View() string {
@@ -155,6 +243,15 @@ func (m model) View() string {
 		return "No text to read."
 	}
 
+	// Render side-by-side if TOC is visible
+	if m.tocVisible {
+		return m.viewWithTOC()
+	}
+
+	return m.viewReading(m.width)
+}
+
+func (m model) viewReading(width int) string {
 	word := m.CurrentWord()
 	formatted := formatWord(word)
 
@@ -164,16 +261,25 @@ func (m model) View() string {
 	}
 
 	current, total := m.Progress()
+	chapterInfo := ""
+	if title := m.CurrentChapterTitle(); title != "" {
+		chapterInfo = fmt.Sprintf(" | %s", title)
+	}
 	status := statusStyle.Render(
-		fmt.Sprintf("Word %d/%d | %d WPM%s",
+		fmt.Sprintf("Word %d/%d | %d WPM%s%s",
 			current,
 			total,
 			m.WPM,
 			pause,
+			chapterInfo,
 		),
 	)
 
-	controls := controlsStyle.Render("SPACE: pause/play  ↑/↓: speed  ←/→: sentence  Q: quit")
+	tocHint := ""
+	if len(m.TOC) > 0 {
+		tocHint = "  T: TOC"
+	}
+	controls := controlsStyle.Render("SPACE: pause  ↑/↓: speed  ←/→: sentence  R: restart" + tocHint + "  Q: quit")
 
 	// Reserve 2 lines: 1 for status at top, 1 for controls at bottom
 	avail := m.height - 2
@@ -194,7 +300,7 @@ func (m model) View() string {
 		sb.WriteString("\n")
 	}
 
-	line := anchorORPText(formatted, word, m.width)
+	line := anchorORPText(formatted, word, width)
 	sb.WriteString(line)
 
 	remaining := avail - vPad
@@ -205,6 +311,42 @@ func (m model) View() string {
 	sb.WriteString(controls)
 
 	return sb.String()
+}
+
+func (m model) viewWithTOC() string {
+	// Calculate panel widths (1/3 for TOC, 2/3 for reading)
+	tocWidth := m.width / 3
+	readingWidth := m.width - tocWidth - 1 // -1 for separator
+
+	// Render TOC panel
+	tocPanel := m.renderTOCPanel(tocWidth, m.height)
+
+	// Render reading area
+	readingArea := m.viewReading(readingWidth)
+
+	// Join horizontally
+	return lipgloss.JoinHorizontal(lipgloss.Top, tocPanel, readingArea)
+}
+
+func (m model) renderTOCPanel(width, height int) string {
+	// Title
+	title := tocTitleStyle.Render("Table of Contents")
+
+	// Instructions
+	instructions := controlsStyle.Render("↑/↓: navigate  Enter: select  T/Esc: close")
+
+	// List takes remaining height
+	listHeight := height - 4 // title + instructions + borders
+	if listHeight < 3 {
+		listHeight = 3
+	}
+
+	// Update list size
+	m.tocList.SetSize(width-4, listHeight)
+
+	content := fmt.Sprintf("%s\n\n%s\n\n%s", title, m.tocList.View(), instructions)
+
+	return tocPanelStyle.Width(width - 2).Height(height - 2).Render(content)
 }
 
 func formatWord(word string) string {
@@ -238,12 +380,34 @@ func tick(d time.Duration) tea.Cmd {
 	})
 }
 
-func newModel(text string, wpm int) model {
+func newModel(text string, wpm int, toc []reader.TOCEntry, chapters []reader.Chapter) model {
+	r := reader.NewReader(text, wpm)
+	r.SetChapters(chapters, toc)
+
+	// Create TOC list items
+	items := make([]list.Item, len(toc))
+	for i, entry := range toc {
+		items[i] = tocItem{entry: entry}
+	}
+
+	// Create list with custom delegate for compact display
+	delegate := list.NewDefaultDelegate()
+	delegate.ShowDescription = true
+	delegate.SetHeight(2)
+
+	tocList := list.New(items, delegate, 30, 20)
+	tocList.Title = ""
+	tocList.SetShowTitle(false)
+	tocList.SetShowStatusBar(false)
+	tocList.SetFilteringEnabled(true)
+	tocList.SetShowHelp(false)
+
 	return model{
-		Reader:   reader.NewReader(text, wpm),
+		Reader:   r,
 		quitting: false,
 		width:    80,
 		height:   24,
+		tocList:  tocList,
 	}
 }
 
@@ -251,6 +415,8 @@ func main() {
 	wpm := flag.Int("w", 300, "Words per minute (default: 300)")
 	showVersion := flag.Bool("v", false, "Show version information")
 	showVersionLong := flag.Bool("version", false, "Show version information")
+	showTOC := flag.Bool("toc", false, "Show table of contents at startup")
+	freshStart := flag.Bool("fresh", false, "Ignore saved reading position")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Brr - Terminal Speed Reading Tool\n\n")
 		fmt.Fprintf(os.Stderr, "Usage:\n")
@@ -260,13 +426,16 @@ func main() {
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  brr file.txt              Read from file at 300 WPM\n")
 		fmt.Fprintf(os.Stderr, "  brr -w 500 file.txt       Read from file at 500 WPM\n")
+		fmt.Fprintf(os.Stderr, "  brr --toc book.epub       Show TOC panel at startup\n")
+		fmt.Fprintf(os.Stderr, "  brr --fresh book.epub     Start from beginning\n")
 		fmt.Fprintf(os.Stderr, "  cat file.txt | brr        Read from stdin\n")
-		fmt.Fprintf(os.Stderr, "  echo \"Hello world\" | brr  Read from stdin\n")
 		fmt.Fprintf(os.Stderr, "\nControls:\n")
 		fmt.Fprintf(os.Stderr, "  SPACE    Pause/play\n")
 		fmt.Fprintf(os.Stderr, "  +/-      Increase/decrease speed by 50 WPM\n")
 		fmt.Fprintf(os.Stderr, "  ↑/↓      Increase/decrease speed by 50 WPM\n")
 		fmt.Fprintf(os.Stderr, "  ←/→      Jump to previous/next sentence\n")
+		fmt.Fprintf(os.Stderr, "  T        Toggle table of contents\n")
+		fmt.Fprintf(os.Stderr, "  R        Restart from beginning\n")
 		fmt.Fprintf(os.Stderr, "  Q        Quit\n")
 	}
 	flag.Parse()
@@ -277,14 +446,40 @@ func main() {
 	}
 
 	var text string
+	var toc []reader.TOCEntry
+	var chapters []reader.Chapter
+	var sourceFile string
 
 	if flag.NArg() > 0 {
-		filename := flag.Arg(0)
-		var err error
-		text, err = reader.ExtractText(filename)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: Failed to read file '%s': %v\n", filename, err)
-			os.Exit(1)
+		sourceFile = flag.Arg(0)
+
+		// Try to extract with chapters for formats that support it
+		if provider, ok := getTOCProvider(sourceFile); ok {
+			var err error
+			toc, err = provider.TOC(sourceFile)
+			if err != nil {
+				// Non-fatal - continue without TOC
+				toc = nil
+			}
+		}
+
+		if extractor, ok := getChapterExtractor(sourceFile); ok {
+			var words []string
+			var err error
+			chapters, words, err = extractor.ExtractChapters(sourceFile)
+			if err == nil && len(words) > 0 {
+				text = strings.Join(words, " ")
+			}
+		}
+
+		// Fallback to simple extraction if chapter extraction failed
+		if text == "" {
+			var err error
+			text, err = reader.ExtractText(sourceFile)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: Failed to read file '%s': %v\n", sourceFile, err)
+				os.Exit(1)
+			}
 		}
 	} else {
 		stat, _ := os.Stdin.Stat()
@@ -307,11 +502,56 @@ func main() {
 		os.Exit(1)
 	}
 
-	m := newModel(text, *wpm)
+	m := newModel(text, *wpm, toc, chapters)
+	m.sourceFile = sourceFile
+
+	// Initialize state store for file-based input
+	if sourceFile != "" {
+		store, err := state.NewStateStore()
+		if err == nil {
+			m.stateStore = store
+			hash, err := state.ComputeHash(sourceFile)
+			if err == nil {
+				m.fileHash = hash
+
+				// Restore position if not starting fresh
+				if !*freshStart {
+					if pos := store.GetPosition(hash); pos > 0 && pos < len(m.Words) {
+						m.CurrentIndex = pos
+					}
+				}
+			}
+		}
+	}
+
+	// Show TOC at startup if requested and available
+	if *showTOC && len(toc) > 0 {
+		m.tocVisible = true
+		m.Paused = true
+	}
+
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// getTOCProvider returns a TOCProvider if the format supports it
+func getTOCProvider(filename string) (reader.TOCProvider, bool) {
+	// Check if EPUB
+	if strings.HasSuffix(strings.ToLower(filename), ".epub") {
+		return &reader.EPUBFormat{}, true
+	}
+	return nil, false
+}
+
+// getChapterExtractor returns a ChapterExtractor if the format supports it
+func getChapterExtractor(filename string) (reader.ChapterExtractor, bool) {
+	// Check if EPUB
+	if strings.HasSuffix(strings.ToLower(filename), ".epub") {
+		return &reader.EPUBFormat{}, true
+	}
+	return nil, false
 }

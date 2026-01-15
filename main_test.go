@@ -119,7 +119,7 @@ func TestNewModel(t *testing.T) {
 	text := "Hello world test"
 	wpm := 500
 
-	m := newModel(text, wpm)
+	m := newModel(text, wpm, nil, nil)
 
 	if m.WPM != wpm {
 		t.Errorf("newModel() WPM = %v, want %v", m.WPM, wpm)
@@ -156,7 +156,7 @@ func TestModelGetDelay(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := newModel("test", tt.wpm)
+			m := newModel("test", tt.wpm, nil, nil)
 			result := m.GetDelay()
 			// Allow for small floating point differences
 			diff := result - tt.expected
@@ -172,7 +172,7 @@ func TestModelGetDelay(t *testing.T) {
 
 func TestModelUpdate(t *testing.T) {
 	t.Run("space pauses", func(t *testing.T) {
-		m := newModel("hello world", 300)
+		m := newModel("hello world", 300, nil, nil)
 		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}}
 
 		updatedModel, _ := m.Update(msg)
@@ -184,7 +184,7 @@ func TestModelUpdate(t *testing.T) {
 	})
 
 	t.Run("space unpauses", func(t *testing.T) {
-		m := newModel("hello world", 300)
+		m := newModel("hello world", 300, nil, nil)
 		m.Paused = true
 		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}}
 
@@ -197,7 +197,7 @@ func TestModelUpdate(t *testing.T) {
 	})
 
 	t.Run("plus increases speed", func(t *testing.T) {
-		m := newModel("hello world", 300)
+		m := newModel("hello world", 300, nil, nil)
 		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'+'}}
 
 		updatedModel, _ := m.Update(msg)
@@ -209,7 +209,7 @@ func TestModelUpdate(t *testing.T) {
 	})
 
 	t.Run("minus decreases speed", func(t *testing.T) {
-		m := newModel("hello world", 300)
+		m := newModel("hello world", 300, nil, nil)
 		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'-'}}
 
 		updatedModel, _ := m.Update(msg)
@@ -221,7 +221,7 @@ func TestModelUpdate(t *testing.T) {
 	})
 
 	t.Run("speed caps at 1500", func(t *testing.T) {
-		m := newModel("hello world", 1500)
+		m := newModel("hello world", 1500, nil, nil)
 		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'+'}}
 
 		updatedModel, _ := m.Update(msg)
@@ -233,7 +233,7 @@ func TestModelUpdate(t *testing.T) {
 	})
 
 	t.Run("speed floors at 100", func(t *testing.T) {
-		m := newModel("hello world", 100)
+		m := newModel("hello world", 100, nil, nil)
 		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'-'}}
 
 		updatedModel, _ := m.Update(msg)
@@ -245,7 +245,7 @@ func TestModelUpdate(t *testing.T) {
 	})
 
 	t.Run("q quits", func(t *testing.T) {
-		m := newModel("hello world", 300)
+		m := newModel("hello world", 300, nil, nil)
 		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}}
 
 		updatedModel, cmd := m.Update(msg)
@@ -260,7 +260,7 @@ func TestModelUpdate(t *testing.T) {
 	})
 
 	t.Run("tick advances word", func(t *testing.T) {
-		m := newModel("hello world test", 300)
+		m := newModel("hello world test", 300, nil, nil)
 		msg := tickMsg(time.Now())
 
 		updatedModel, _ := m.Update(msg)
@@ -272,7 +272,7 @@ func TestModelUpdate(t *testing.T) {
 	})
 
 	t.Run("tick doesn't advance when paused", func(t *testing.T) {
-		m := newModel("hello world test", 300)
+		m := newModel("hello world test", 300, nil, nil)
 		m.Paused = true
 		msg := tickMsg(time.Now())
 
@@ -285,7 +285,7 @@ func TestModelUpdate(t *testing.T) {
 	})
 
 	t.Run("window size updates dimensions", func(t *testing.T) {
-		m := newModel("hello world", 300)
+		m := newModel("hello world", 300, nil, nil)
 		msg := tea.WindowSizeMsg{Width: 120, Height: 40}
 
 		updatedModel, _ := m.Update(msg)
@@ -302,7 +302,7 @@ func TestModelUpdate(t *testing.T) {
 
 func TestModelView(t *testing.T) {
 	t.Run("shows word", func(t *testing.T) {
-		m := newModel("hello world", 300)
+		m := newModel("hello world", 300, nil, nil)
 		view := m.View()
 
 		// Should contain word tracking info
@@ -315,7 +315,7 @@ func TestModelView(t *testing.T) {
 	})
 
 	t.Run("shows paused state", func(t *testing.T) {
-		m := newModel("hello world", 300)
+		m := newModel("hello world", 300, nil, nil)
 		m.Paused = true
 		view := m.View()
 
@@ -325,7 +325,7 @@ func TestModelView(t *testing.T) {
 	})
 
 	t.Run("shows completion", func(t *testing.T) {
-		m := newModel("hello", 300)
+		m := newModel("hello", 300, nil, nil)
 		m.CurrentIndex = 0
 		m.quitting = true
 		view := m.View()
@@ -391,7 +391,7 @@ func BenchmarkFormatWord(b *testing.B) {
 }
 
 func BenchmarkModelView(b *testing.B) {
-	m := newModel("hello world this is a test", 300)
+	m := newModel("hello world this is a test", 300, nil, nil)
 	m.width = 80
 	m.height = 24
 	b.ResetTimer()
