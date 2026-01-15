@@ -159,12 +159,12 @@ func main() {
 
 	if flag.NArg() > 0 {
 		filename := flag.Arg(0)
-		data, err := os.ReadFile(filename)
+		var err error
+		text, err = reader.ExtractText(filename)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: Failed to read file '%s': %v\n", filename, err)
 			os.Exit(1)
 		}
-		text = string(data)
 	} else {
 		stat, _ := os.Stdin.Stat()
 		if (stat.Mode() & os.ModeCharDevice) != 0 {
