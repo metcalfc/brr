@@ -172,16 +172,31 @@ func main() {
 		sourceFile = flag.Arg(0)
 
 		// Try to extract with chapters for formats that support it
-		if strings.HasSuffix(strings.ToLower(sourceFile), ".epub") {
-			epub := &reader.EPUBFormat{}
+		lower := strings.ToLower(sourceFile)
+		var tocProvider reader.TOCProvider
+		var chapterExtractor reader.ChapterExtractor
+
+		switch {
+		case strings.HasSuffix(lower, ".epub"):
+			tocProvider = &reader.EPUBFormat{}
+			chapterExtractor = &reader.EPUBFormat{}
+		case strings.HasSuffix(lower, ".md"), strings.HasSuffix(lower, ".markdown"):
+			tocProvider = &reader.MarkdownFormat{}
+			chapterExtractor = &reader.MarkdownFormat{}
+		}
+
+		if tocProvider != nil {
 			var err error
-			toc, err = epub.TOC(sourceFile)
+			toc, err = tocProvider.TOC(sourceFile)
 			if err != nil {
 				toc = nil
 			}
+		}
 
+		if chapterExtractor != nil {
 			var words []string
-			chapters, words, err = epub.ExtractChapters(sourceFile)
+			var err error
+			chapters, words, err = chapterExtractor.ExtractChapters(sourceFile)
 			if err == nil && len(words) > 0 {
 				text = strings.Join(words, " ")
 			}

@@ -540,18 +540,24 @@ func main() {
 
 // getTOCProvider returns a TOCProvider if the format supports it
 func getTOCProvider(filename string) (reader.TOCProvider, bool) {
-	// Check if EPUB
-	if strings.HasSuffix(strings.ToLower(filename), ".epub") {
+	lower := strings.ToLower(filename)
+	switch {
+	case strings.HasSuffix(lower, ".epub"):
 		return &reader.EPUBFormat{}, true
+	case strings.HasSuffix(lower, ".md"), strings.HasSuffix(lower, ".markdown"):
+		return &reader.MarkdownFormat{}, true
 	}
 	return nil, false
 }
 
 // getChapterExtractor returns a ChapterExtractor if the format supports it
 func getChapterExtractor(filename string) (reader.ChapterExtractor, bool) {
-	// Check if EPUB
-	if strings.HasSuffix(strings.ToLower(filename), ".epub") {
+	lower := strings.ToLower(filename)
+	switch {
+	case strings.HasSuffix(lower, ".epub"):
 		return &reader.EPUBFormat{}, true
+	case strings.HasSuffix(lower, ".md"), strings.HasSuffix(lower, ".markdown"):
+		return &reader.MarkdownFormat{}, true
 	}
 	return nil, false
 }
