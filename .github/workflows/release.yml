@@ -67,6 +67,9 @@ jobs:
             fi
             cp "dist/$bin" "$staging/$app"
             cp README.md LICENSE sample.txt "$staging/"
+            if [[ $app == "brr" ]]; then
+              cp brr.1 "$staging/"
+            fi
 
             arch=$(echo $bin | cut -d- -f3)
             tar czf "dist/${app}_${GITHUB_REF_NAME}_linux_${arch}.tar.gz" -C "$staging" .
@@ -131,6 +134,9 @@ jobs:
             fi
             cp "dist/$bin" "$staging/$app"
             cp README.md LICENSE sample.txt "$staging/"
+            if [[ $app == "brr" ]]; then
+              cp brr.1 "$staging/"
+            fi
 
             arch=$(echo $bin | cut -d- -f3)
             tar czf "dist/${app}_${GITHUB_REF_NAME}_darwin_${arch}.tar.gz" -C "$staging" .
@@ -242,6 +248,7 @@ jobs:
 
             def install
               bin.install "brr"
+              man1.install "brr.1"
             end
 
             test do

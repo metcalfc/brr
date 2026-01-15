@@ -28,6 +28,7 @@ class Brr < Formula
 
   def install
     bin.install "brr"
+    man1.install "brr.1"
   end
 
   test do
