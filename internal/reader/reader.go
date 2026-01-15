@@ -14,6 +14,11 @@ type Reader struct {
 	WPM            int
 	Paused         bool
 	LastArrowPress time.Time
+
+	// Chapter support
+	Chapters       []Chapter
+	TOC            []TOCEntry
+	CurrentChapter int
 }
 
 // NewReader creates a new Reader from the given text and words-per-minute setting.
@@ -116,4 +121,38 @@ func (r *Reader) Advance() bool {
 // AtEnd returns true if the reader is at the last word.
 func (r *Reader) AtEnd() bool {
 	return r.CurrentIndex >= len(r.Words)-1
+}
+
+// JumpToChapter jumps to the specified word index and updates current chapter.
+func (r *Reader) JumpToChapter(wordIndex int) {
+	if wordIndex >= 0 && wordIndex < len(r.Words) {
+		r.CurrentIndex = wordIndex
+		r.updateCurrentChapter()
+	}
+}
+
+// updateCurrentChapter sets CurrentChapter based on CurrentIndex.
+func (r *Reader) updateCurrentChapter() {
+	for i := len(r.Chapters) - 1; i >= 0; i-- {
+		if r.CurrentIndex >= r.Chapters[i].WordStart {
+			r.CurrentChapter = i
+			return
+		}
+	}
+	r.CurrentChapter = 0
+}
+
+// CurrentChapterTitle returns the title of the current chapter.
+func (r *Reader) CurrentChapterTitle() string {
+	if r.CurrentChapter >= 0 && r.CurrentChapter < len(r.Chapters) {
+		return r.Chapters[r.CurrentChapter].Title
+	}
+	return ""
+}
+
+// SetChapters sets the chapter data and updates the current chapter.
+func (r *Reader) SetChapters(chapters []Chapter, toc []TOCEntry) {
+	r.Chapters = chapters
+	r.TOC = toc
+	r.updateCurrentChapter()
 }
