@@ -1,6 +1,10 @@
 # Binaries
 brr
+grr
 *.exe
+
+# Build artifacts
+dist/
 
 # Python
 __pycache__/

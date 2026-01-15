@@ -1,0 +1,163 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # Build brr (TUI) and grr for Linux
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+
+      - name: Install Fyne dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-dev xorg-dev
+
+      - name: Build brr for Linux
+        run: |
+          mkdir -p dist
+          GOOS=linux GOARCH=amd64 go build -o dist/brr-linux-amd64 -ldflags="-s -w" main.go
+          GOOS=linux GOARCH=arm64 go build -o dist/brr-linux-arm64 -ldflags="-s -w" main.go
+
+      - name: Build grr for Linux
+        env:
+          CGO_ENABLED: 1
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o dist/grr-linux-amd64 -ldflags="-s -w" grr.go
+
+      - name: Build grr for Linux ARM64
+        env:
+          CGO_ENABLED: 1
+          CC: aarch64-linux-gnu-gcc
+        run: |
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          GOOS=linux GOARCH=arm64 go build -o dist/grr-linux-arm64 -ldflags="-s -w" grr.go
+
+      - name: Create archives
+        run: |
+          # Create staging directories and archives
+          for bin in brr-linux-amd64 brr-linux-arm64 grr-linux-amd64 grr-linux-arm64; do
+            staging="dist/${bin}-staging"
+            mkdir -p "$staging"
+            cp "dist/$bin" "$staging/"
+            cp README.md LICENSE sample.txt "$staging/"
+
+            # Determine archive name
+            if [[ $bin == brr-* ]]; then
+              app="brr"
+            else
+              app="grr"
+            fi
+            arch=$(echo $bin | cut -d- -f3)
+
+            tar czf "dist/${app}_${GITHUB_REF_NAME}_linux_${arch}.tar.gz" -C "$staging" .
+          done
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-builds
+          path: dist/*.tar.gz
+
+  # Build brr and grr for macOS
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+
+      - name: Build brr for macOS
+        run: |
+          mkdir -p dist
+          GOOS=darwin GOARCH=amd64 go build -o dist/brr-darwin-amd64 -ldflags="-s -w" main.go
+          GOOS=darwin GOARCH=arm64 go build -o dist/brr-darwin-arm64 -ldflags="-s -w" main.go
+
+      - name: Build grr for macOS Intel
+        env:
+          CGO_ENABLED: 1
+          GOARCH: amd64
+        run: |
+          go build -o dist/grr-darwin-amd64 -ldflags="-s -w" grr.go
+
+      - name: Build grr for macOS Apple Silicon
+        env:
+          CGO_ENABLED: 1
+          GOARCH: arm64
+        run: |
+          go build -o dist/grr-darwin-arm64 -ldflags="-s -w" grr.go
+
+      - name: Create archives
+        run: |
+          # Create staging directories and archives
+          for bin in brr-darwin-amd64 brr-darwin-arm64 grr-darwin-amd64 grr-darwin-arm64; do
+            staging="dist/${bin}-staging"
+            mkdir -p "$staging"
+            cp "dist/$bin" "$staging/"
+            cp README.md LICENSE sample.txt "$staging/"
+
+            # Determine archive name
+            if [[ $bin == brr-* ]]; then
+              app="brr"
+            else
+              app="grr"
+            fi
+            arch=$(echo $bin | cut -d- -f3)
+
+            tar czf "dist/${app}_${GITHUB_REF_NAME}_darwin_${arch}.tar.gz" -C "$staging" .
+          done
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-builds
+          path: dist/*.tar.gz
+
+  # Create GitHub release with all artifacts
+  release:
+    needs: [build-linux, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-builds
+          path: dist/
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-builds
+          path: dist/
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum *.tar.gz > checksums.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*
+          generate_release_notes: true
+          draft: false
