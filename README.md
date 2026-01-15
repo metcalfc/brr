@@ -20,23 +20,35 @@ A fast, lightweight CLI tool for speed reading using the RSVP (Rapid Serial Visu
 ### Homebrew (macOS/Linux)
 
 ```bash
-brew install metcalfc/tap/brr
+# Install the TUI version
+brew install metcalfc/brr/brr
+
+# Install the GUI version
+brew install metcalfc/brr/grr
+```
+
+### Quick Install (macOS/Linux)
+
+Downloads the latest release to current directory:
+
+```bash
+# brr (TUI)
+curl -sL "https://github.com/metcalfc/brr/releases/latest/download/brr_$(curl -s https://api.github.com/repos/metcalfc/brr/releases/latest | grep tag_name | cut -d'"' -f4)_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar -xz brr
+
+# grr (GUI)
+curl -sL "https://github.com/metcalfc/brr/releases/latest/download/grr_$(curl -s https://api.github.com/repos/metcalfc/brr/releases/latest | grep tag_name | cut -d'"' -f4)_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar -xz grr
 ```
 
 ### From Source
 
 ```bash
+# TUI version
 go install github.com/metcalfc/brr@latest
-```
 
-### Manual Build
-
-```bash
+# Or build both versions locally
 git clone https://github.com/metcalfc/brr.git
 cd brr
-go build -o brr
-sudo mv brr /usr/local/bin/
-sudo cp brr.1 /usr/local/share/man/man1/
+make build
 ```
 
 ## Usage
