@@ -58,17 +58,17 @@ jobs:
           for bin in brr-linux-amd64 brr-linux-arm64 grr-linux-amd64; do
             staging="dist/${bin}-staging"
             mkdir -p "$staging"
-            cp "dist/$bin" "$staging/"
-            cp README.md LICENSE sample.txt "$staging/"
 
-            # Determine archive name
+            # Determine app name and rename binary to just app name
             if [[ $bin == brr-* ]]; then
               app="brr"
             else
               app="grr"
             fi
-            arch=$(echo $bin | cut -d- -f3)
+            cp "dist/$bin" "$staging/$app"
+            cp README.md LICENSE sample.txt "$staging/"
 
+            arch=$(echo $bin | cut -d- -f3)
             tar czf "dist/${app}_${GITHUB_REF_NAME}_linux_${arch}.tar.gz" -C "$staging" .
           done
 
@@ -122,17 +122,17 @@ jobs:
           for bin in brr-darwin-amd64 brr-darwin-arm64 grr-darwin-amd64 grr-darwin-arm64; do
             staging="dist/${bin}-staging"
             mkdir -p "$staging"
-            cp "dist/$bin" "$staging/"
-            cp README.md LICENSE sample.txt "$staging/"
 
-            # Determine archive name
+            # Determine app name and rename binary to just app name
             if [[ $bin == brr-* ]]; then
               app="brr"
             else
               app="grr"
             fi
-            arch=$(echo $bin | cut -d- -f3)
+            cp "dist/$bin" "$staging/$app"
+            cp README.md LICENSE sample.txt "$staging/"
 
+            arch=$(echo $bin | cut -d- -f3)
             tar czf "dist/${app}_${GITHUB_REF_NAME}_darwin_${arch}.tar.gz" -C "$staging" .
           done
 
