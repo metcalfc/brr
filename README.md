@@ -5,6 +5,8 @@ A fast, lightweight CLI tool for speed reading using the RSVP (Rapid Serial Visu
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Go Version](https://img.shields.io/badge/go-%3E%3D1.21-blue.svg)
 
+![Demo](assets/demo.gif)
+
 ## Features
 
 - 🚀 Adjustable reading speed (100-1500 WPM)
