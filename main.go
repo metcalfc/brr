@@ -89,7 +89,6 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Handle TOC panel input when visible
 	if m.tocVisible {
 		return m.updateTOC(msg)
 	}
@@ -147,7 +146,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "t":
-			// Toggle TOC panel if we have TOC entries
 			if len(m.TOC) > 0 {
 				m.tocVisible = true
 				m.Paused = true
@@ -155,7 +153,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "r":
-			// Restart from beginning
 			m.CurrentIndex = 0
 			if m.stateStore != nil && m.fileHash != "" {
 				m.stateStore.Clear(m.fileHash)
@@ -163,7 +160,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "q", "Q", "ctrl+c":
-			// Save position before quitting
 			m.savePosition()
 			m.quitting = true
 			return m, tea.Quit
@@ -172,7 +168,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		// Update TOC list dimensions
 		m.tocList.SetSize(m.width/3-4, m.height-4)
 		return m, nil
 
@@ -185,7 +180,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tick(m.GetDelay())
 		}
 
-		// Reached the end - save and quit
 		m.savePosition()
 		m.quitting = true
 		return m, tea.Quit
@@ -199,7 +193,6 @@ func (m model) updateTOC(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
-			// Jump to selected chapter
 			if item, ok := m.tocList.SelectedItem().(tocItem); ok {
 				m.JumpToChapter(item.entry.WordIndex)
 			}
@@ -207,7 +200,6 @@ func (m model) updateTOC(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "t", "esc", "q":
-			// Close TOC panel
 			m.tocVisible = false
 			return m, nil
 		}
@@ -219,7 +211,6 @@ func (m model) updateTOC(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Pass other messages to the list
 	var cmd tea.Cmd
 	m.tocList, cmd = m.tocList.Update(msg)
 	return m, cmd
@@ -243,7 +234,6 @@ func (m model) View() string {
 		return "No text to read."
 	}
 
-	// Render side-by-side if TOC is visible
 	if m.tocVisible {
 		return m.viewWithTOC()
 	}
@@ -281,7 +271,6 @@ func (m model) viewReading(width int) string {
 	}
 	controls := controlsStyle.Render("SPACE: pause  ↑/↓: speed  ←/→: sentence  R: restart" + tocHint + "  Q: quit")
 
-	// Reserve 2 lines: 1 for status at top, 1 for controls at bottom
 	avail := m.height - 2
 	if avail < 1 {
 		avail = 1
@@ -314,34 +303,23 @@ func (m model) viewReading(width int) string {
 }
 
 func (m model) viewWithTOC() string {
-	// Calculate panel widths (1/3 for TOC, 2/3 for reading)
 	tocWidth := m.width / 3
-	readingWidth := m.width - tocWidth - 1 // -1 for separator
+	readingWidth := m.width - tocWidth - 1
 
-	// Render TOC panel
 	tocPanel := m.renderTOCPanel(tocWidth, m.height)
-
-	// Render reading area
 	readingArea := m.viewReading(readingWidth)
 
-	// Join horizontally
 	return lipgloss.JoinHorizontal(lipgloss.Top, tocPanel, readingArea)
 }
 
 func (m model) renderTOCPanel(width, height int) string {
-	// Title
 	title := tocTitleStyle.Render("Table of Contents")
-
-	// Instructions
 	instructions := controlsStyle.Render("↑/↓: navigate  Enter: select  T/Esc: close")
 
-	// List takes remaining height
-	listHeight := height - 4 // title + instructions + borders
+	listHeight := height - 4
 	if listHeight < 3 {
 		listHeight = 3
 	}
-
-	// Update list size
 	m.tocList.SetSize(width-4, listHeight)
 
 	content := fmt.Sprintf("%s\n\n%s\n\n%s", title, m.tocList.View(), instructions)
@@ -352,8 +330,6 @@ func (m model) renderTOCPanel(width, height int) string {
 func formatWord(word string) string {
 	runes := []rune(word)
 	orp := reader.GetORPPosition(word)
-
-	// Ensure orp is within bounds
 	if orp >= len(runes) {
 		orp = len(runes) - 1
 	}
@@ -393,13 +369,11 @@ func newModel(text string, wpm int, toc []reader.TOCEntry, chapters []reader.Cha
 	r := reader.NewReader(text, wpm)
 	r.SetChapters(chapters, toc)
 
-	// Create TOC list items
 	items := make([]list.Item, len(toc))
 	for i, entry := range toc {
 		items[i] = tocItem{entry: entry}
 	}
 
-	// Create list with custom delegate for compact display
 	delegate := list.NewDefaultDelegate()
 	delegate.ShowDescription = true
 	delegate.SetHeight(2)
@@ -462,12 +436,10 @@ func main() {
 	if flag.NArg() > 0 {
 		sourceFile = flag.Arg(0)
 
-		// Try to extract with chapters for formats that support it
 		if provider, ok := getTOCProvider(sourceFile); ok {
 			var err error
 			toc, err = provider.TOC(sourceFile)
 			if err != nil {
-				// Non-fatal - continue without TOC
 				toc = nil
 			}
 		}
@@ -481,7 +453,6 @@ func main() {
 			}
 		}
 
-		// Fallback to simple extraction if chapter extraction failed
 		if text == "" {
 			var err error
 			text, err = reader.ExtractText(sourceFile)
@@ -514,7 +485,6 @@ func main() {
 	m := newModel(text, *wpm, toc, chapters)
 	m.sourceFile = sourceFile
 
-	// Initialize state store for file-based input
 	if sourceFile != "" {
 		store, err := state.NewStateStore()
 		if err == nil {
@@ -522,8 +492,6 @@ func main() {
 			hash, err := state.ComputeHash(sourceFile)
 			if err == nil {
 				m.fileHash = hash
-
-				// Restore position if not starting fresh
 				if !*freshStart {
 					if pos := store.GetPosition(hash); pos > 0 && pos < len(m.Words) {
 						m.CurrentIndex = pos
@@ -533,7 +501,6 @@ func main() {
 		}
 	}
 
-	// Show TOC at startup if requested and available
 	if *showTOC && len(toc) > 0 {
 		m.tocVisible = true
 		m.Paused = true
@@ -547,7 +514,6 @@ func main() {
 	}
 }
 
-// getTOCProvider returns a TOCProvider if the format supports it
 func getTOCProvider(filename string) (reader.TOCProvider, bool) {
 	lower := strings.ToLower(filename)
 	switch {
@@ -559,7 +525,6 @@ func getTOCProvider(filename string) (reader.TOCProvider, bool) {
 	return nil, false
 }
 
-// getChapterExtractor returns a ChapterExtractor if the format supports it
 func getChapterExtractor(filename string) (reader.ChapterExtractor, bool) {
 	lower := strings.ToLower(filename)
 	switch {

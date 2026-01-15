@@ -38,7 +38,6 @@ type navContent struct {
 
 // TOC extracts the table of contents from an EPUB file.
 func (f *EPUBFormat) TOC(filename string) ([]TOCEntry, error) {
-	// Open the EPUB
 	rc, err := epub.OpenReader(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open epub: %w", err)
@@ -51,26 +50,18 @@ func (f *EPUBFormat) TOC(filename string) ([]TOCEntry, error) {
 
 	book := rc.Rootfiles[0]
 
-	// Find and parse the NCX file
 	ncxData, err := findAndReadNCX(filename, book)
 	if err != nil {
 		return nil, err
 	}
 
-	// Parse NCX XML
 	var toc ncx
 	if err := xml.Unmarshal(ncxData, &toc); err != nil {
 		return nil, fmt.Errorf("failed to parse NCX: %w", err)
 	}
 
-	// Build spine href to actual word index mapping by extracting text
 	spineMap := buildAccurateSpineMap(filename, book)
-
-	// Convert navPoints to TOCEntry
 	entries := flattenNavPoints(toc.NavMap.NavPoints, spineMap, 0)
-
-	// Generate previews
-	addPreviews(entries, spineMap)
 
 	return entries, nil
 }
@@ -89,7 +80,6 @@ func (f *EPUBFormat) ExtractChapters(filename string) ([]Chapter, []string, erro
 
 	book := rc.Rootfiles[0]
 
-	// Build href-to-title mapping from NCX
 	tocByHref := buildTOCHrefMap(filename, book)
 
 	var allWords []string
@@ -121,10 +111,8 @@ func (f *EPUBFormat) ExtractChapters(filename string) ([]Chapter, []string, erro
 		allWords = append(allWords, words...)
 		wordEnd := len(allWords) - 1
 
-		// Try to find title from TOC, fallback to generic
 		title := fmt.Sprintf("Section %d", i+1)
 		if ref.Item.HREF != "" {
-			// Try full href, then basename
 			if t, ok := tocByHref[ref.Item.HREF]; ok {
 				title = t
 			} else if t, ok := tocByHref[path.Base(ref.Item.HREF)]; ok {
@@ -162,20 +150,15 @@ func buildTOCHrefMap(filename string, book *epub.Rootfile) map[string]string {
 			href := np.Content.Src
 			title := strings.TrimSpace(np.Label.Text)
 
-			// Store with full href
 			if _, exists := result[href]; !exists {
 				result[href] = title
 			}
-
-			// Also store with href without fragment
 			if idx := strings.Index(href, "#"); idx != -1 {
 				baseHref := href[:idx]
 				if _, exists := result[baseHref]; !exists {
 					result[baseHref] = title
 				}
 			}
-
-			// Also store with just basename
 			baseHref := path.Base(href)
 			if idx := strings.Index(baseHref, "#"); idx != -1 {
 				baseHref = baseHref[:idx]
@@ -193,25 +176,19 @@ func buildTOCHrefMap(filename string, book *epub.Rootfile) map[string]string {
 }
 
 func findAndReadNCX(filename string, book *epub.Rootfile) ([]byte, error) {
-	// Open as zip to find NCX
 	zr, err := zip.OpenReader(filename)
 	if err != nil {
 		return nil, err
 	}
 	defer zr.Close()
 
-	// Look for NCX file - usually toc.ncx
 	var ncxPath string
-
-	// Look for NCX in manifest by media-type
 	for _, item := range book.Manifest.Items {
 		if item.MediaType == "application/x-dtbncx+xml" {
 			ncxPath = item.HREF
 			break
 		}
 	}
-
-	// Fallback: look for .ncx file by extension
 	if ncxPath == "" {
 		for _, f := range zr.File {
 			if strings.HasSuffix(strings.ToLower(f.Name), ".ncx") {
@@ -225,9 +202,7 @@ func findAndReadNCX(filename string, book *epub.Rootfile) ([]byte, error) {
 		return nil, fmt.Errorf("no NCX file found in EPUB")
 	}
 
-	// Read the NCX file
 	for _, f := range zr.File {
-		// Match with or without directory prefix
 		if f.Name == ncxPath || strings.HasSuffix(f.Name, "/"+ncxPath) || path.Base(f.Name) == path.Base(ncxPath) {
 			rc, err := f.Open()
 			if err != nil {
@@ -241,7 +216,6 @@ func findAndReadNCX(filename string, book *epub.Rootfile) ([]byte, error) {
 	return nil, fmt.Errorf("NCX file %s not found in archive", ncxPath)
 }
 
-// spineInfo holds word index and preview text for a spine item
 type spineInfo struct {
 	wordIndex int
 	preview   string
@@ -269,7 +243,6 @@ func buildAccurateSpineMap(filename string, book *epub.Rootfile) map[string]spin
 		text := extractTextFromHTML(string(data))
 		words := strings.Fields(text)
 
-		// Get preview (first ~10 words)
 		preview := ""
 		if len(words) > 0 {
 			previewWords := words
@@ -281,7 +254,6 @@ func buildAccurateSpineMap(filename string, book *epub.Rootfile) map[string]spin
 
 		if ref.Item.HREF != "" {
 			m[ref.Item.HREF] = spineInfo{wordIndex: wordCount, preview: preview}
-			// Also index by basename
 			m[path.Base(ref.Item.HREF)] = spineInfo{wordIndex: wordCount, preview: preview}
 		}
 
@@ -295,7 +267,6 @@ func flattenNavPoints(points []navPoint, spineMap map[string]spineInfo, level in
 	var entries []TOCEntry
 
 	for _, np := range points {
-		// Get href without fragment
 		href := np.Content.Src
 		baseHref := href
 		if idx := strings.Index(href, "#"); idx != -1 {
@@ -304,8 +275,6 @@ func flattenNavPoints(points []navPoint, spineMap map[string]spineInfo, level in
 
 		wordIndex := 0
 		preview := ""
-
-		// Try to find in spine map
 		if info, ok := spineMap[baseHref]; ok {
 			wordIndex = info.wordIndex
 			preview = info.preview
@@ -321,8 +290,6 @@ func flattenNavPoints(points []navPoint, spineMap map[string]spineInfo, level in
 			Level:     level,
 		}
 		entries = append(entries, entry)
-
-		// Recurse into children
 		if len(np.Children) > 0 {
 			children := flattenNavPoints(np.Children, spineMap, level+1)
 			entries = append(entries, children...)
@@ -330,9 +297,4 @@ func flattenNavPoints(points []navPoint, spineMap map[string]spineInfo, level in
 	}
 
 	return entries
-}
-
-func addPreviews(entries []TOCEntry, spineMap map[string]spineInfo) {
-	// Previews are already set by flattenNavPoints
-	// This function can be used for additional processing if needed
 }

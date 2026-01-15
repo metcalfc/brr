@@ -25,7 +25,6 @@ func (f *MarkdownFormat) Extract(filename string) (string, error) {
 	return string(data), nil
 }
 
-// headerRegex matches markdown headers (# to ######)
 var headerRegex = regexp.MustCompile(`^(#{1,6})\s+(.+)$`)
 
 // TOC extracts the table of contents from a Markdown file by parsing headers.
@@ -43,24 +42,17 @@ func (f *MarkdownFormat) TOC(filename string) ([]TOCEntry, error) {
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		// Check if line is a header
 		if match := headerRegex.FindStringSubmatch(line); match != nil {
-			level := len(match[1]) - 1 // h1 = level 0, h2 = level 1, etc.
+			level := len(match[1]) - 1
 			title := strings.TrimSpace(match[2])
-
-			// Get preview from the next non-empty, non-header line
-			preview := ""
-			// We'll leave preview empty for now since we can't peek ahead easily
 
 			entries = append(entries, TOCEntry{
 				Title:     title,
-				Preview:   preview,
 				WordIndex: wordCount,
 				Level:     level,
 			})
 		}
 
-		// Count words in this line
 		words := strings.Fields(line)
 		wordCount += len(words)
 	}
@@ -85,9 +77,7 @@ func (f *MarkdownFormat) ExtractChapters(filename string) ([]Chapter, []string, 
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		// Check if line is a header
 		if match := headerRegex.FindStringSubmatch(line); match != nil {
-			// Save previous chapter
 			if currentChapter != nil && len(currentWords) > 0 {
 				currentChapter.WordEnd = len(allWords) - 1
 				chapters = append(chapters, *currentChapter)
@@ -101,19 +91,16 @@ func (f *MarkdownFormat) ExtractChapters(filename string) ([]Chapter, []string, 
 			currentWords = nil
 		}
 
-		// Add words from this line
 		words := strings.Fields(line)
 		allWords = append(allWords, words...)
 		currentWords = append(currentWords, words...)
 	}
 
-	// Save last chapter
 	if currentChapter != nil && len(currentWords) > 0 {
 		currentChapter.WordEnd = len(allWords) - 1
 		chapters = append(chapters, *currentChapter)
 	}
 
-	// If no chapters found, create a single chapter with all content
 	if len(chapters) == 0 && len(allWords) > 0 {
 		chapters = append(chapters, Chapter{
 			Title:     "Document",

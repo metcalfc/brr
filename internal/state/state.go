@@ -39,7 +39,6 @@ func NewStateStore() (*StateStore, error) {
 		data: make(map[string]ReadingState),
 	}
 	if err := store.load(); err != nil {
-		// Non-fatal - start with empty state
 		store.data = make(map[string]ReadingState)
 	}
 	return store, nil

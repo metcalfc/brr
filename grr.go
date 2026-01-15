@@ -49,8 +49,6 @@ func newModel(text string, wpm int, toc []reader.TOCEntry, chapters []reader.Cha
 func createWordDisplay(word string, fontSize float32, windowWidth float32) *fyne.Container {
 	runes := []rune(word)
 	orp := reader.GetORPPosition(word)
-
-	// Ensure orp is within bounds
 	if orp >= len(runes) {
 		orp = len(runes) - 1
 	}
@@ -77,11 +75,9 @@ func createWordDisplay(word string, fontSize float32, windowWidth float32) *fyne
 	afterText.TextSize = fontSize
 	afterText.TextStyle.Bold = true
 
-	// Measure text
 	beforeSize := beforeText.MinSize()
 	focusSize := focusText.MinSize()
 
-	// Horizontal: anchor ORP at center
 	centerX := windowWidth / 2
 	beforeX := centerX - beforeSize.Width
 	focusX := centerX
@@ -91,8 +87,6 @@ func createWordDisplay(word string, fontSize float32, windowWidth float32) *fyne
 		beforeX = 0
 	}
 
-	// Create a container that will be positioned by border layout
-	// We'll use a custom layout to center vertically
 	c := &fyne.Container{
 		Layout: &centerVerticalLayout{},
 		Objects: []fyne.CanvasObject{
@@ -102,7 +96,6 @@ func createWordDisplay(word string, fontSize float32, windowWidth float32) *fyne
 		},
 	}
 
-	// Position horizontally
 	beforeText.Move(fyne.NewPos(beforeX, 0))
 	focusText.Move(fyne.NewPos(focusX, 0))
 	afterText.Move(fyne.NewPos(afterX, 0))
@@ -124,7 +117,6 @@ func (l *centerVerticalLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
 }
 
 func (l *centerVerticalLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
-	// Find max text height
 	var maxH float32
 	for _, o := range objects {
 		objSize := o.MinSize()
@@ -133,13 +125,11 @@ func (l *centerVerticalLayout) Layout(objects []fyne.CanvasObject, size fyne.Siz
 		}
 	}
 
-	// Center vertically
 	y := (size.Height - maxH) / 2
 	if y < 0 {
 		y = 0
 	}
 
-	// Position each object at the correct Y (X already set)
 	for _, o := range objects {
 		pos := o.Position()
 		o.Move(fyne.NewPos(pos.X, y))
@@ -180,7 +170,6 @@ func main() {
 	if flag.NArg() > 0 {
 		sourceFile = flag.Arg(0)
 
-		// Try to extract with chapters for formats that support it
 		lower := strings.ToLower(sourceFile)
 		var tocProvider reader.TOCProvider
 		var chapterExtractor reader.ChapterExtractor
@@ -211,7 +200,6 @@ func main() {
 			}
 		}
 
-		// Fallback to simple extraction
 		if text == "" {
 			var err error
 			text, err = reader.ExtractText(sourceFile)
@@ -243,7 +231,6 @@ func main() {
 
 	m := newModel(text, *wpm, toc, chapters)
 
-	// Initialize state store for file-based input
 	if sourceFile != "" {
 		store, err := state.NewStateStore()
 		if err == nil {
@@ -251,8 +238,6 @@ func main() {
 			hash, err := state.ComputeHash(sourceFile)
 			if err == nil {
 				m.fileHash = hash
-
-				// Restore position if not starting fresh
 				if !*freshStart {
 					if pos := store.GetPosition(hash); pos > 0 && pos < len(m.Words) {
 						m.CurrentIndex = pos
@@ -262,7 +247,6 @@ func main() {
 		}
 	}
 
-	// Show TOC at startup if requested and available
 	if *showTOC && len(toc) > 0 {
 		m.tocVisible = true
 	}
@@ -282,10 +266,8 @@ func main() {
 	controlsLabel := widget.NewLabel("SPACE: pause  ↑/↓: speed  +/-: font  ←/→: sentence  R: restart" + tocHint + "  F: fullscreen  Q: quit")
 	controlsLabel.Alignment = fyne.TextAlignCenter
 
-	// Create placeholder for word display
 	wordContainer := container.NewMax()
 
-	// Create TOC panel
 	var tocList *widget.List
 	var tocPanel *container.Split
 	var mainContainer *fyne.Container
@@ -369,8 +351,6 @@ func main() {
 		}
 
 		newWordDisplay := createWordDisplay(m.CurrentWord(), m.fontSize, canvasWidth)
-
-		// Replace all objects in wordContainer
 		wordContainer.Objects = []fyne.CanvasObject{newWordDisplay}
 		wordContainer.Refresh()
 
@@ -442,7 +422,6 @@ func main() {
 			w.SetFullScreen(!w.FullScreen())
 
 		case fyne.KeyQ:
-			// Save position before quitting
 			if m.stateStore != nil && m.fileHash != "" {
 				m.stateStore.SetPosition(m.fileHash, m.CurrentIndex)
 			}
@@ -453,11 +432,9 @@ func main() {
 		}
 	})
 
-	// Handle T and R keys
 	w.Canvas().SetOnTypedRune(func(r rune) {
 		switch r {
 		case 't', 'T':
-			// Toggle TOC panel
 			if tocPanel != nil && len(m.TOC) > 0 {
 				m.tocVisible = !m.tocVisible
 				if m.tocVisible {
@@ -471,7 +448,6 @@ func main() {
 			}
 
 		case 'r', 'R':
-			// Restart from beginning
 			m.CurrentIndex = 0
 			if m.stateStore != nil && m.fileHash != "" {
 				m.stateStore.Clear(m.fileHash)
@@ -494,9 +470,7 @@ func main() {
 	w.Resize(fyne.NewSize(800, 600))
 	w.SetContent(mainContainer)
 
-	// Handle window resize - pause and redraw
-	var lastWidth float32
-	lastWidth = 800
+	var lastWidth float32 = 800
 	go func() {
 		for {
 			select {
@@ -515,7 +489,6 @@ func main() {
 	}()
 
 	w.SetOnClosed(func() {
-		// Save position before closing
 		if m.stateStore != nil && m.fileHash != "" {
 			m.stateStore.SetPosition(m.fileHash, m.CurrentIndex)
 		}
@@ -524,7 +497,6 @@ func main() {
 		})
 	})
 
-	// Initialize first word after window shows
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		fyne.Do(updateDisplay)
