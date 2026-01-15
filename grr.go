@@ -136,6 +136,7 @@ func (l *centerVerticalLayout) Layout(objects []fyne.CanvasObject, size fyne.Siz
 func main() {
 	wpm := flag.Int("w", 300, "Words per minute")
 	showVersion := flag.Bool("v", false, "Show version information")
+	showVersionLong := flag.Bool("version", false, "Show version information")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Grr - GUI Speed Reading Tool\n\n")
 		fmt.Fprintf(os.Stderr, "Usage:\n")
@@ -149,7 +150,7 @@ func main() {
 	}
 	flag.Parse()
 
-	if *showVersion {
+	if *showVersion || *showVersionLong {
 		fmt.Printf("grr %s (commit: %s, built: %s)\n", version, commit, date)
 		os.Exit(0)
 	}

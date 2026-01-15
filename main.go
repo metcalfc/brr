@@ -250,6 +250,7 @@ func newModel(text string, wpm int) model {
 func main() {
 	wpm := flag.Int("w", 300, "Words per minute (default: 300)")
 	showVersion := flag.Bool("v", false, "Show version information")
+	showVersionLong := flag.Bool("version", false, "Show version information")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Brr - Terminal Speed Reading Tool\n\n")
 		fmt.Fprintf(os.Stderr, "Usage:\n")
@@ -270,7 +271,7 @@ func main() {
 	}
 	flag.Parse()
 
-	if *showVersion {
+	if *showVersion || *showVersionLong {
 		fmt.Printf("brr %s (commit: %s, built: %s)\n", version, commit, date)
 		os.Exit(0)
 	}

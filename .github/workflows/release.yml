@@ -254,11 +254,56 @@ jobs:
           sed -i 's/^          //' homebrew-tap/Formula/brr.rb
           cat homebrew-tap/Formula/brr.rb
 
+          # Calculate grr checksums (no Linux ARM64 - CGO cross-compile not supported)
+          GRR_DARWIN_AMD64_SHA=$(sha256sum dist/grr_${TAG}_darwin_amd64.tar.gz | cut -d' ' -f1)
+          GRR_DARWIN_ARM64_SHA=$(sha256sum dist/grr_${TAG}_darwin_arm64.tar.gz | cut -d' ' -f1)
+          GRR_LINUX_AMD64_SHA=$(sha256sum dist/grr_${TAG}_linux_amd64.tar.gz | cut -d' ' -f1)
+
+          # Generate grr formula
+          cat > homebrew-tap/Formula/grr.rb << FORMULA
+          class Grr < Formula
+            desc "GUI speed reading tool using RSVP technique"
+            homepage "https://github.com/metcalfc/brr"
+            version "${VERSION}"
+            license "MIT"
+
+            on_macos do
+              on_intel do
+                url "https://github.com/metcalfc/brr/releases/download/${TAG}/grr_${TAG}_darwin_amd64.tar.gz"
+                sha256 "${GRR_DARWIN_AMD64_SHA}"
+              end
+              on_arm do
+                url "https://github.com/metcalfc/brr/releases/download/${TAG}/grr_${TAG}_darwin_arm64.tar.gz"
+                sha256 "${GRR_DARWIN_ARM64_SHA}"
+              end
+            end
+
+            on_linux do
+              on_intel do
+                url "https://github.com/metcalfc/brr/releases/download/${TAG}/grr_${TAG}_linux_amd64.tar.gz"
+                sha256 "${GRR_LINUX_AMD64_SHA}"
+              end
+            end
+
+            def install
+              bin.install "grr"
+            end
+
+            test do
+              assert_match "grr ${VERSION}", shell_output("#{bin}/grr -v")
+            end
+          end
+          FORMULA
+
+          # Remove leading whitespace from heredoc
+          sed -i 's/^          //' homebrew-tap/Formula/grr.rb
+          cat homebrew-tap/Formula/grr.rb
+
       - name: Commit and push to tap
         run: |
           cd homebrew-tap
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/brr.rb
-          git commit -m "Update brr to ${GITHUB_REF_NAME}"
+          git add Formula/brr.rb Formula/grr.rb
+          git commit -m "Update brr and grr to ${GITHUB_REF_NAME}"
           git push
