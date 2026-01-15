@@ -48,19 +48,14 @@ jobs:
           LDFLAGS="-s -w -X main.version=${{ env.VERSION }} -X main.commit=${{ github.sha }} -X main.date=${{ env.DATE }}"
           GOOS=linux GOARCH=amd64 go build -o dist/grr-linux-amd64 -ldflags="$LDFLAGS" grr.go
 
-      - name: Build grr for Linux ARM64
-        env:
-          CGO_ENABLED: 1
-          CC: aarch64-linux-gnu-gcc
-        run: |
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-          LDFLAGS="-s -w -X main.version=${{ env.VERSION }} -X main.commit=${{ github.sha }} -X main.date=${{ env.DATE }}"
-          GOOS=linux GOARCH=arm64 go build -o dist/grr-linux-arm64 -ldflags="$LDFLAGS" grr.go
+      # Note: grr for Linux ARM64 is skipped - cross-compiling CGO GUI apps
+      # requires ARM64 sysroot with X11/GL libraries which is complex to set up.
+      # Linux ARM64 users can use the TUI version (brr) instead.
 
       - name: Create archives
         run: |
           # Create staging directories and archives
-          for bin in brr-linux-amd64 brr-linux-arm64 grr-linux-amd64 grr-linux-arm64; do
+          for bin in brr-linux-amd64 brr-linux-arm64 grr-linux-amd64; do
             staging="dist/${bin}-staging"
             mkdir -p "$staging"
             cp "dist/$bin" "$staging/"

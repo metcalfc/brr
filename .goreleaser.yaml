@@ -21,6 +21,7 @@ builds:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
 
   # grr - GUI version for Linux (requires CGO)
+  # Note: ARM64 is skipped - cross-compiling CGO GUI apps requires ARM64 sysroot
   - id: grr-linux
     main: ./grr.go
     binary: grr
@@ -30,7 +31,6 @@ builds:
       - linux
     goarch:
       - amd64
-      - arm64
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
     hooks:
