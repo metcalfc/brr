@@ -18,6 +18,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 	"github.com/metcalfc/brr/internal/reader"
+	"github.com/metcalfc/brr/internal/state"
 )
 
 // Version info (injected via ldflags)
@@ -29,11 +30,15 @@ var (
 
 type model struct {
 	*reader.Reader
-	fontSize float32
+	fontSize   float32
+	tocVisible bool
+	stateStore *state.StateStore
+	fileHash   string
 }
 
-func newModel(text string, wpm int) *model {
+func newModel(text string, wpm int, toc []reader.TOCEntry, chapters []reader.Chapter) *model {
 	r := reader.NewReader(text, wpm)
+	r.SetChapters(chapters, toc)
 	r.Paused = true // GUI starts paused
 	return &model{
 		Reader:   r,
@@ -137,6 +142,8 @@ func main() {
 	wpm := flag.Int("w", 300, "Words per minute")
 	showVersion := flag.Bool("v", false, "Show version information")
 	showVersionLong := flag.Bool("version", false, "Show version information")
+	showTOC := flag.Bool("toc", false, "Show table of contents at startup")
+	freshStart := flag.Bool("fresh", false, "Ignore saved reading position")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Grr - GUI Speed Reading Tool\n\n")
 		fmt.Fprintf(os.Stderr, "Usage:\n")
@@ -146,6 +153,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  grr file.txt              Read from file at 300 WPM\n")
 		fmt.Fprintf(os.Stderr, "  grr -w 500 file.txt       Read from file at 500 WPM\n")
+		fmt.Fprintf(os.Stderr, "  grr --toc book.epub       Show TOC panel at startup\n")
 		fmt.Fprintf(os.Stderr, "  cat file.txt | grr        Read from stdin\n")
 	}
 	flag.Parse()
@@ -156,14 +164,37 @@ func main() {
 	}
 
 	var text string
+	var toc []reader.TOCEntry
+	var chapters []reader.Chapter
+	var sourceFile string
 
 	if flag.NArg() > 0 {
-		filename := flag.Arg(0)
-		var err error
-		text, err = reader.ExtractText(filename)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: Failed to read file '%s': %v\n", filename, err)
-			os.Exit(1)
+		sourceFile = flag.Arg(0)
+
+		// Try to extract with chapters for formats that support it
+		if strings.HasSuffix(strings.ToLower(sourceFile), ".epub") {
+			epub := &reader.EPUBFormat{}
+			var err error
+			toc, err = epub.TOC(sourceFile)
+			if err != nil {
+				toc = nil
+			}
+
+			var words []string
+			chapters, words, err = epub.ExtractChapters(sourceFile)
+			if err == nil && len(words) > 0 {
+				text = strings.Join(words, " ")
+			}
+		}
+
+		// Fallback to simple extraction
+		if text == "" {
+			var err error
+			text, err = reader.ExtractText(sourceFile)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: Failed to read file '%s': %v\n", sourceFile, err)
+				os.Exit(1)
+			}
 		}
 	} else {
 		stat, _ := os.Stdin.Stat()
@@ -186,7 +217,31 @@ func main() {
 		os.Exit(1)
 	}
 
-	m := newModel(text, *wpm)
+	m := newModel(text, *wpm, toc, chapters)
+
+	// Initialize state store for file-based input
+	if sourceFile != "" {
+		store, err := state.NewStateStore()
+		if err == nil {
+			m.stateStore = store
+			hash, err := state.ComputeHash(sourceFile)
+			if err == nil {
+				m.fileHash = hash
+
+				// Restore position if not starting fresh
+				if !*freshStart {
+					if pos := store.GetPosition(hash); pos > 0 && pos < len(m.Words) {
+						m.CurrentIndex = pos
+					}
+				}
+			}
+		}
+	}
+
+	// Show TOC at startup if requested and available
+	if *showTOC && len(toc) > 0 {
+		m.tocVisible = true
+	}
 
 	a := app.New()
 	w := a.NewWindow("grr - Speed Reader")
@@ -196,18 +251,84 @@ func main() {
 		current, total, m.WPM, m.fontSize))
 	statusLabel.Alignment = fyne.TextAlignCenter
 
-	controlsLabel := widget.NewLabel("SPACE: pause/play  ↑/↓: speed  +/-: font size  ←/→: sentence  F: fullscreen  Q: quit")
+	tocHint := ""
+	if len(m.TOC) > 0 {
+		tocHint = "  T: TOC"
+	}
+	controlsLabel := widget.NewLabel("SPACE: pause  ↑/↓: speed  +/-: font  ←/→: sentence  R: restart" + tocHint + "  F: fullscreen  Q: quit")
 	controlsLabel.Alignment = fyne.TextAlignCenter
 
 	// Create placeholder for word display
 	wordContainer := container.NewMax()
 
-	content := container.NewBorder(
+	// Create TOC panel
+	var tocList *widget.List
+	var tocPanel *container.Split
+	var mainContainer *fyne.Container
+
+	if len(m.TOC) > 0 {
+		tocList = widget.NewList(
+			func() int { return len(m.TOC) },
+			func() fyne.CanvasObject {
+				return container.NewVBox(
+					widget.NewLabel("Title"),
+					widget.NewLabel("Preview"),
+				)
+			},
+			func(id widget.ListItemID, obj fyne.CanvasObject) {
+				entry := m.TOC[id]
+				vbox := obj.(*fyne.Container)
+				titleLabel := vbox.Objects[0].(*widget.Label)
+				previewLabel := vbox.Objects[1].(*widget.Label)
+
+				indent := strings.Repeat("  ", entry.Level)
+				titleLabel.SetText(indent + entry.Title)
+				titleLabel.TextStyle.Bold = true
+
+				preview := entry.Preview
+				if len(preview) > 50 {
+					preview = preview[:50] + "..."
+				}
+				previewLabel.SetText(indent + preview)
+			},
+		)
+
+		tocList.OnSelected = func(id widget.ListItemID) {
+			if id < len(m.TOC) {
+				m.JumpToChapter(m.TOC[id].WordIndex)
+				m.tocVisible = false
+				tocPanel.Leading.Hide()
+				tocPanel.Refresh()
+			}
+		}
+	}
+
+	readingContent := container.NewBorder(
 		statusLabel,
 		controlsLabel,
 		nil, nil,
 		wordContainer,
 	)
+
+	if len(m.TOC) > 0 {
+		tocContainer := container.NewBorder(
+			widget.NewLabel("Table of Contents"),
+			widget.NewLabel("Click to jump • T to close"),
+			nil, nil,
+			tocList,
+		)
+
+		tocPanel = container.NewHSplit(tocContainer, readingContent)
+		tocPanel.Offset = 0.33
+
+		if !m.tocVisible {
+			tocContainer.Hide()
+		}
+
+		mainContainer = container.NewMax(tocPanel)
+	} else {
+		mainContainer = container.NewMax(readingContent)
+	}
 
 	ticker := time.NewTicker(m.GetDelay())
 	done := make(chan bool)
@@ -297,6 +418,10 @@ func main() {
 			w.SetFullScreen(!w.FullScreen())
 
 		case fyne.KeyQ:
+			// Save position before quitting
+			if m.stateStore != nil && m.fileHash != "" {
+				m.stateStore.SetPosition(m.fileHash, m.CurrentIndex)
+			}
 			closeOnce.Do(func() {
 				close(done)
 			})
@@ -304,9 +429,31 @@ func main() {
 		}
 	})
 
-	// Handle +/- keys
+	// Handle T and R keys
 	w.Canvas().SetOnTypedRune(func(r rune) {
 		switch r {
+		case 't', 'T':
+			// Toggle TOC panel
+			if tocPanel != nil && len(m.TOC) > 0 {
+				m.tocVisible = !m.tocVisible
+				if m.tocVisible {
+					m.Paused = true
+					tocPanel.Leading.Show()
+				} else {
+					tocPanel.Leading.Hide()
+				}
+				tocPanel.Refresh()
+				updateDisplay()
+			}
+
+		case 'r', 'R':
+			// Restart from beginning
+			m.CurrentIndex = 0
+			if m.stateStore != nil && m.fileHash != "" {
+				m.stateStore.Clear(m.fileHash)
+			}
+			updateDisplay()
+
 		case '+', '=':
 			if m.fontSize < 200 {
 				m.fontSize += 5
@@ -321,7 +468,7 @@ func main() {
 	})
 
 	w.Resize(fyne.NewSize(800, 600))
-	w.SetContent(content)
+	w.SetContent(mainContainer)
 
 	// Handle window resize - pause and redraw
 	var lastWidth float32
@@ -344,6 +491,10 @@ func main() {
 	}()
 
 	w.SetOnClosed(func() {
+		// Save position before closing
+		if m.stateStore != nil && m.fileHash != "" {
+			m.stateStore.SetPosition(m.fileHash, m.CurrentIndex)
+		}
 		closeOnce.Do(func() {
 			close(done)
 		})
