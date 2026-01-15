@@ -280,20 +280,11 @@ func main() {
 
 	if flag.NArg() > 0 {
 		filename := flag.Arg(0)
-		if strings.HasSuffix(strings.ToLower(filename), ".epub") {
-			var err error
-			text, err = reader.ExtractTextFromEPUB(filename)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: Failed to read EPUB file '%s': %v\n", filename, err)
-				os.Exit(1)
-			}
-		} else {
-			data, err := os.ReadFile(filename)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: Failed to read file '%s': %v\n", filename, err)
-				os.Exit(1)
-			}
-			text = string(data)
+		var err error
+		text, err = reader.ExtractText(filename)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: Failed to read file '%s': %v\n", filename, err)
+			os.Exit(1)
 		}
 	} else {
 		stat, _ := os.Stdin.Stat()

@@ -9,7 +9,20 @@ import (
 	"golang.org/x/net/html"
 )
 
-// ExtractTextFromEPUB opens an EPUB file and extracts all text content from it.
+// EPUBFormat implements Format for EPUB files.
+type EPUBFormat struct{}
+
+func init() {
+	Register(&EPUBFormat{})
+}
+
+func (f *EPUBFormat) Name() string       { return "EPUB" }
+func (f *EPUBFormat) Extensions() []string { return []string{".epub"} }
+func (f *EPUBFormat) Extract(filename string) (string, error) {
+	return ExtractTextFromEPUB(filename)
+}
+
+// ExtractTextFromEPUB extracts all text content from an EPUB file.
 func ExtractTextFromEPUB(filename string) (string, error) {
 	rc, err := epub.OpenReader(filename)
 	if err != nil {
@@ -21,57 +34,48 @@ func ExtractTextFromEPUB(filename string) (string, error) {
 		return "", fmt.Errorf("no rootfiles found in epub")
 	}
 
-	// Typically the first rootfile is the main content
 	book := rc.Rootfiles[0]
-	var fullText strings.Builder
+	var out strings.Builder
 
-	for _, itemref := range book.Spine.Itemrefs {
-		item := itemref.Item
-		if item == nil {
+	for _, ref := range book.Spine.Itemrefs {
+		if ref.Item == nil {
 			continue
 		}
-
-		// Open the item (usually XHTML)
-		r, err := item.Open()
+		r, err := ref.Item.Open()
 		if err != nil {
-			continue // Skip items we can't open
+			continue
 		}
-
-		content, err := io.ReadAll(r)
+		data, err := io.ReadAll(r)
 		r.Close()
 		if err != nil {
 			continue
 		}
-
-		text := extractTextFromHTML(string(content))
-		fullText.WriteString(text)
-		fullText.WriteString(" ") // Add space between chapters/sections
+		out.WriteString(extractTextFromHTML(string(data)))
+		out.WriteString(" ")
 	}
 
-	return fullText.String(), nil
+	return out.String(), nil
 }
 
-// extractTextFromHTML parses HTML content and returns plain text.
-func extractTextFromHTML(htmlContent string) string {
-	doc, err := html.Parse(strings.NewReader(htmlContent))
+func extractTextFromHTML(s string) string {
+	doc, err := html.Parse(strings.NewReader(s))
 	if err != nil {
 		return ""
 	}
 
-	var sb strings.Builder
-	var f func(*html.Node)
-	f = func(n *html.Node) {
+	var out strings.Builder
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
 		if n.Type == html.TextNode {
-			text := strings.TrimSpace(n.Data)
-			if text != "" {
-				sb.WriteString(text)
-				sb.WriteString(" ")
+			if t := strings.TrimSpace(n.Data); t != "" {
+				out.WriteString(t)
+				out.WriteString(" ")
 			}
 		}
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			f(c)
+			walk(c)
 		}
 	}
-	f(doc)
-	return sb.String()
+	walk(doc)
+	return out.String()
 }
