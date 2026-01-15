@@ -173,3 +173,90 @@ jobs:
           files: dist/*
           generate_release_notes: true
           draft: false
+
+  # Update Homebrew formula with new version and checksums
+  update-formula:
+    needs: [release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download artifacts for checksums
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-builds
+          path: dist/
+
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-builds
+          path: dist/
+
+      - name: Update formula
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+
+          # Calculate checksums
+          DARWIN_AMD64_SHA=$(sha256sum dist/brr_${TAG}_darwin_amd64.tar.gz | cut -d' ' -f1)
+          DARWIN_ARM64_SHA=$(sha256sum dist/brr_${TAG}_darwin_arm64.tar.gz | cut -d' ' -f1)
+          LINUX_AMD64_SHA=$(sha256sum dist/brr_${TAG}_linux_amd64.tar.gz | cut -d' ' -f1)
+          LINUX_ARM64_SHA=$(sha256sum dist/brr_${TAG}_linux_arm64.tar.gz | cut -d' ' -f1)
+
+          # Generate formula
+          cat > brr.rb << FORMULA
+          class Brr < Formula
+            desc "Terminal speed reading tool using RSVP technique"
+            homepage "https://github.com/metcalfc/brr"
+            version "${VERSION}"
+            license "MIT"
+
+            on_macos do
+              on_intel do
+                url "https://github.com/metcalfc/brr/releases/download/${TAG}/brr_${TAG}_darwin_amd64.tar.gz"
+                sha256 "${DARWIN_AMD64_SHA}"
+              end
+              on_arm do
+                url "https://github.com/metcalfc/brr/releases/download/${TAG}/brr_${TAG}_darwin_arm64.tar.gz"
+                sha256 "${DARWIN_ARM64_SHA}"
+              end
+            end
+
+            on_linux do
+              on_intel do
+                url "https://github.com/metcalfc/brr/releases/download/${TAG}/brr_${TAG}_linux_amd64.tar.gz"
+                sha256 "${LINUX_AMD64_SHA}"
+              end
+              on_arm do
+                url "https://github.com/metcalfc/brr/releases/download/${TAG}/brr_${TAG}_linux_arm64.tar.gz"
+                sha256 "${LINUX_ARM64_SHA}"
+              end
+            end
+
+            def install
+              bin.install "brr"
+            end
+
+            test do
+              assert_match "brr ${VERSION}", shell_output("#{bin}/brr -v")
+            end
+          end
+          FORMULA
+
+          # Remove leading whitespace from heredoc
+          sed -i 's/^          //' brr.rb
+          cat brr.rb
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add brr.rb
+          git commit -m "Update Homebrew formula for ${GITHUB_REF_NAME}"
+          git push origin master
