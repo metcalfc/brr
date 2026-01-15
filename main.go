@@ -12,6 +12,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/metcalfc/brr/internal/reader"
 )
 
 var (
@@ -43,21 +44,16 @@ var (
 )
 
 type model struct {
-	words          []string
-	sentenceStarts []int
-	currentIndex   int
-	wpm            int
-	paused         bool
-	quitting       bool
-	width          int
-	height         int
-	lastArrowPress time.Time
+	*reader.Reader
+	quitting bool
+	width    int
+	height   int
 }
 
 type tickMsg time.Time
 
 func (m model) Init() tea.Cmd {
-	return tick(m.getDelay())
+	return tick(m.GetDelay())
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -65,52 +61,52 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case " ":
-			m.paused = !m.paused
-			if !m.paused {
-				return m, tick(m.getDelay())
+			m.Paused = !m.Paused
+			if !m.Paused {
+				return m, tick(m.GetDelay())
 			}
 			return m, nil
 
 		case "+", "=":
-			if m.wpm < 1500 {
-				m.wpm += 50
+			if m.WPM < 1500 {
+				m.WPM += 50
 			}
 			return m, nil
 
 		case "-":
-			if m.wpm > 100 {
-				m.wpm -= 50
+			if m.WPM > 100 {
+				m.WPM -= 50
 			}
 			return m, nil
 
 		case "up":
-			if m.wpm < 1500 {
-				m.wpm += 50
+			if m.WPM < 1500 {
+				m.WPM += 50
 			}
 			return m, nil
 
 		case "down":
-			if m.wpm > 100 {
-				m.wpm -= 50
+			if m.WPM > 100 {
+				m.WPM -= 50
 			}
 			return m, nil
 
 		case "left":
 			now := time.Now()
-			if now.Sub(m.lastArrowPress) > 500*time.Millisecond {
-				m.paused = true
+			if now.Sub(m.LastArrowPress) > 500*time.Millisecond {
+				m.Paused = true
 			}
-			m.lastArrowPress = now
-			m.jumpToPrevSentence()
+			m.LastArrowPress = now
+			m.JumpToPrevSentence()
 			return m, nil
 
 		case "right":
 			now := time.Now()
-			if now.Sub(m.lastArrowPress) > 500*time.Millisecond {
-				m.paused = true
+			if now.Sub(m.LastArrowPress) > 500*time.Millisecond {
+				m.Paused = true
 			}
-			m.lastArrowPress = now
-			m.jumpToNextSentence()
+			m.LastArrowPress = now
+			m.JumpToNextSentence()
 			return m, nil
 
 		case "q", "Q", "ctrl+c":
@@ -124,13 +120,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tickMsg:
-		if m.paused {
+		if m.Paused {
 			return m, nil
 		}
 
-		if m.currentIndex < len(m.words)-1 {
-			m.currentIndex++
-			return m, tick(m.getDelay())
+		if m.Advance() {
+			return m, tick(m.GetDelay())
 		}
 
 		// Reached the end
@@ -143,29 +138,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 	if m.quitting {
-		if m.currentIndex >= len(m.words)-1 {
+		if m.AtEnd() {
 			return completeStyle.Render("\n  Reading complete!\n")
 		}
 		return ""
 	}
 
-	if len(m.words) == 0 {
+	if len(m.Words) == 0 {
 		return "No text to read."
 	}
 
-	word := m.words[m.currentIndex]
+	word := m.CurrentWord()
 	formatted := formatWord(word)
 
 	pause := ""
-	if m.paused {
+	if m.Paused {
 		pause = pausedStyle.Render(" [PAUSED]")
 	}
 
+	current, total := m.Progress()
 	status := statusStyle.Render(
 		fmt.Sprintf("Word %d/%d | %d WPM%s",
-			m.currentIndex+1,
-			len(m.words),
-			m.wpm,
+			current,
+			total,
+			m.WPM,
 			pause,
 		),
 	)
@@ -205,7 +201,7 @@ func (m model) View() string {
 }
 
 func formatWord(word string) string {
-	orp := getORPPosition(word)
+	orp := reader.GetORPPosition(word)
 
 	before := word[:orp]
 	focus := string(word[orp])
@@ -219,28 +215,14 @@ func formatWord(word string) string {
 		wordAfterStyle.Render(after)
 }
 
-func getORPPosition(word string) int {
-	length := len(word)
-	if length <= 1 {
-		return 0
-	} else if length <= 5 {
-		return 1
-	}
-	return length / 3
-}
-
 func anchorORPText(text string, word string, width int) string {
 	anchor := width / 2
-	orp := getORPPosition(word)
+	orp := reader.GetORPPosition(word)
 	pad := anchor - orp
 	if pad < 0 {
 		pad = 0
 	}
 	return strings.Repeat(" ", pad) + text
-}
-
-func (m model) getDelay() time.Duration {
-	return time.Duration(60.0/float64(m.wpm)*1000) * time.Millisecond
 }
 
 func tick(d time.Duration) tea.Cmd {
@@ -249,59 +231,12 @@ func tick(d time.Duration) tea.Cmd {
 	})
 }
 
-func parseText(text string) []string {
-	return strings.Fields(text)
-}
-
-func findSentenceStarts(words []string) []int {
-	starts := []int{0}
-	for i, word := range words {
-		if len(word) > 0 {
-			last := word[len(word)-1]
-			if last == '.' || last == '!' || last == '?' {
-				if i+1 < len(words) {
-					starts = append(starts, i+1)
-				}
-			}
-		}
-	}
-	return starts
-}
-
-func (m *model) jumpToPrevSentence() {
-	for i := len(m.sentenceStarts) - 1; i >= 0; i-- {
-		if m.sentenceStarts[i] < m.currentIndex {
-			m.currentIndex = m.sentenceStarts[i]
-			return
-		}
-	}
-	m.currentIndex = 0
-}
-
-func (m *model) jumpToNextSentence() {
-	for i := 0; i < len(m.sentenceStarts); i++ {
-		if m.sentenceStarts[i] > m.currentIndex {
-			m.currentIndex = m.sentenceStarts[i]
-			return
-		}
-	}
-	if len(m.words) > 0 {
-		m.currentIndex = len(m.words) - 1
-	}
-}
-
 func newModel(text string, wpm int) model {
-	words := parseText(text)
 	return model{
-		words:          words,
-		sentenceStarts: findSentenceStarts(words),
-		currentIndex:   0,
-		wpm:            wpm,
-		paused:         false,
-		quitting:       false,
-		width:          80,
-		height:         24,
-		lastArrowPress: time.Time{},
+		Reader:   reader.NewReader(text, wpm),
+		quitting: false,
+		width:    80,
+		height:   24,
 	}
 }
 

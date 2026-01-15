@@ -16,88 +16,25 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
+	"github.com/metcalfc/brr/internal/reader"
 )
 
 type model struct {
-	words          []string
-	sentenceStarts []int
-	currentIndex   int
-	wpm            int
-	fontSize       float32
-	paused         bool
-	lastArrowPress time.Time
-}
-
-func parseText(text string) []string {
-	return strings.Fields(text)
-}
-
-func findSentenceStarts(words []string) []int {
-	starts := []int{0}
-	for i, word := range words {
-		if len(word) > 0 {
-			last := word[len(word)-1]
-			if last == '.' || last == '!' || last == '?' {
-				if i+1 < len(words) {
-					starts = append(starts, i+1)
-				}
-			}
-		}
-	}
-	return starts
-}
-
-func getORPPosition(word string) int {
-	length := len(word)
-	if length <= 1 {
-		return 0
-	} else if length <= 5 {
-		return 1
-	}
-	return length / 3
-}
-
-func (m *model) jumpToPrevSentence() {
-	for i := len(m.sentenceStarts) - 1; i >= 0; i-- {
-		if m.sentenceStarts[i] < m.currentIndex {
-			m.currentIndex = m.sentenceStarts[i]
-			return
-		}
-	}
-	m.currentIndex = 0
-}
-
-func (m *model) jumpToNextSentence() {
-	for i := 0; i < len(m.sentenceStarts); i++ {
-		if m.sentenceStarts[i] > m.currentIndex {
-			m.currentIndex = m.sentenceStarts[i]
-			return
-		}
-	}
-	if len(m.words) > 0 {
-		m.currentIndex = len(m.words) - 1
-	}
+	*reader.Reader
+	fontSize float32
 }
 
 func newModel(text string, wpm int) *model {
-	words := parseText(text)
+	r := reader.NewReader(text, wpm)
+	r.Paused = true // GUI starts paused
 	return &model{
-		words:          words,
-		sentenceStarts: findSentenceStarts(words),
-		currentIndex:   0,
-		wpm:            wpm,
-		fontSize:       72,
-		paused:         true,
-		lastArrowPress: time.Time{},
+		Reader:   r,
+		fontSize: 72,
 	}
 }
 
-func (m *model) getDelay() time.Duration {
-	return time.Duration(60.0/float64(m.wpm)*1000) * time.Millisecond
-}
-
 func createWordDisplay(word string, fontSize float32, windowWidth float32) *fyne.Container {
-	orp := getORPPosition(word)
+	orp := reader.GetORPPosition(word)
 
 	before := word[:orp]
 	focus := string(word[orp])
@@ -217,8 +154,9 @@ func main() {
 	a := app.New()
 	w := a.NewWindow("grr - Speed Reader")
 
+	current, total := m.Progress()
 	statusLabel := widget.NewLabel(fmt.Sprintf("Word %d/%d | %d WPM | Font: %.0f [PAUSED]",
-		m.currentIndex+1, len(m.words), m.wpm, m.fontSize))
+		current, total, m.WPM, m.fontSize))
 	statusLabel.Alignment = fyne.TextAlignCenter
 
 	controlsLabel := widget.NewLabel("SPACE: pause/play  ↑/↓: speed  +/-: font size  ←/→: sentence  F: fullscreen  Q: quit")
@@ -234,13 +172,13 @@ func main() {
 		wordContainer,
 	)
 
-	ticker := time.NewTicker(m.getDelay())
+	ticker := time.NewTicker(m.GetDelay())
 	done := make(chan bool)
 	var closeOnce sync.Once
 
 	updateDisplay := func() {
-		if m.currentIndex >= len(m.words) {
-			m.currentIndex = len(m.words) - 1
+		if m.CurrentIndex >= len(m.Words) {
+			m.CurrentIndex = len(m.Words) - 1
 		}
 
 		canvasWidth := w.Canvas().Size().Width
@@ -248,18 +186,19 @@ func main() {
 			canvasWidth = 800
 		}
 
-		newWordDisplay := createWordDisplay(m.words[m.currentIndex], m.fontSize, canvasWidth)
+		newWordDisplay := createWordDisplay(m.CurrentWord(), m.fontSize, canvasWidth)
 
 		// Replace all objects in wordContainer
 		wordContainer.Objects = []fyne.CanvasObject{newWordDisplay}
 		wordContainer.Refresh()
 
 		pauseText := ""
-		if m.paused {
+		if m.Paused {
 			pauseText = " [PAUSED]"
 		}
+		current, total := m.Progress()
 		statusLabel.SetText(fmt.Sprintf("Word %d/%d | %d WPM | Font: %.0f%s",
-			m.currentIndex+1, len(m.words), m.wpm, m.fontSize, pauseText))
+			current, total, m.WPM, m.fontSize, pauseText))
 	}
 
 	go func() {
@@ -268,11 +207,11 @@ func main() {
 			case <-done:
 				return
 			case <-ticker.C:
-				if !m.paused && m.currentIndex < len(m.words)-1 {
-					m.currentIndex++
+				if !m.Paused && !m.AtEnd() {
+					m.Advance()
 					fyne.Do(updateDisplay)
-				} else if m.currentIndex >= len(m.words)-1 && !m.paused {
-					m.paused = true
+				} else if m.AtEnd() && !m.Paused {
+					m.Paused = true
 					fyne.Do(updateDisplay)
 				}
 			}
@@ -282,39 +221,39 @@ func main() {
 	w.Canvas().SetOnTypedKey(func(key *fyne.KeyEvent) {
 		switch key.Name {
 		case fyne.KeySpace:
-			m.paused = !m.paused
+			m.Paused = !m.Paused
 			updateDisplay()
 
 		case fyne.KeyUp:
-			if m.wpm < 1500 {
-				m.wpm += 50
-				ticker.Reset(m.getDelay())
+			if m.WPM < 1500 {
+				m.WPM += 50
+				ticker.Reset(m.GetDelay())
 				updateDisplay()
 			}
 
 		case fyne.KeyDown:
-			if m.wpm > 100 {
-				m.wpm -= 50
-				ticker.Reset(m.getDelay())
+			if m.WPM > 100 {
+				m.WPM -= 50
+				ticker.Reset(m.GetDelay())
 				updateDisplay()
 			}
 
 		case fyne.KeyLeft:
 			now := time.Now()
-			if now.Sub(m.lastArrowPress) > 500*time.Millisecond {
-				m.paused = true
+			if now.Sub(m.LastArrowPress) > 500*time.Millisecond {
+				m.Paused = true
 			}
-			m.lastArrowPress = now
-			m.jumpToPrevSentence()
+			m.LastArrowPress = now
+			m.JumpToPrevSentence()
 			updateDisplay()
 
 		case fyne.KeyRight:
 			now := time.Now()
-			if now.Sub(m.lastArrowPress) > 500*time.Millisecond {
-				m.paused = true
+			if now.Sub(m.LastArrowPress) > 500*time.Millisecond {
+				m.Paused = true
 			}
-			m.lastArrowPress = now
-			m.jumpToNextSentence()
+			m.LastArrowPress = now
+			m.JumpToNextSentence()
 			updateDisplay()
 
 		case fyne.KeyF:
@@ -360,7 +299,7 @@ func main() {
 				currentWidth := w.Canvas().Size().Width
 				if currentWidth > 0 && currentWidth != lastWidth {
 					lastWidth = currentWidth
-					m.paused = true
+					m.Paused = true
 					fyne.Do(updateDisplay)
 				}
 			}

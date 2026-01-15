@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/metcalfc/brr/internal/reader"
 )
 
 func TestParseText(t *testing.T) {
@@ -48,14 +49,14 @@ func TestParseText(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := parseText(tt.input)
+			result := reader.ParseText(tt.input)
 			if len(result) != len(tt.expected) {
-				t.Errorf("parseText() length = %v, want %v", len(result), len(tt.expected))
+				t.Errorf("ParseText() length = %v, want %v", len(result), len(tt.expected))
 				return
 			}
 			for i := range result {
 				if result[i] != tt.expected[i] {
-					t.Errorf("parseText()[%d] = %v, want %v", i, result[i], tt.expected[i])
+					t.Errorf("ParseText()[%d] = %v, want %v", i, result[i], tt.expected[i])
 				}
 			}
 		})
@@ -81,9 +82,9 @@ func TestGetORPPosition(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := getORPPosition(tt.word)
+			result := reader.GetORPPosition(tt.word)
 			if result != tt.expected {
-				t.Errorf("getORPPosition(%q) = %v, want %v", tt.word, result, tt.expected)
+				t.Errorf("GetORPPosition(%q) = %v, want %v", tt.word, result, tt.expected)
 			}
 		})
 	}
@@ -120,20 +121,20 @@ func TestNewModel(t *testing.T) {
 
 	m := newModel(text, wpm)
 
-	if m.wpm != wpm {
-		t.Errorf("newModel() wpm = %v, want %v", m.wpm, wpm)
+	if m.WPM != wpm {
+		t.Errorf("newModel() WPM = %v, want %v", m.WPM, wpm)
 	}
 
-	if len(m.words) != 3 {
-		t.Errorf("newModel() words length = %v, want %v", len(m.words), 3)
+	if len(m.Words) != 3 {
+		t.Errorf("newModel() Words length = %v, want %v", len(m.Words), 3)
 	}
 
-	if m.currentIndex != 0 {
-		t.Errorf("newModel() currentIndex = %v, want %v", m.currentIndex, 0)
+	if m.CurrentIndex != 0 {
+		t.Errorf("newModel() CurrentIndex = %v, want %v", m.CurrentIndex, 0)
 	}
 
-	if m.paused != false {
-		t.Errorf("newModel() paused = %v, want %v", m.paused, false)
+	if m.Paused != false {
+		t.Errorf("newModel() Paused = %v, want %v", m.Paused, false)
 	}
 
 	if m.quitting != false {
@@ -156,14 +157,14 @@ func TestModelGetDelay(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := newModel("test", tt.wpm)
-			result := m.getDelay()
+			result := m.GetDelay()
 			// Allow for small floating point differences
 			diff := result - tt.expected
 			if diff < 0 {
 				diff = -diff
 			}
 			if diff > time.Millisecond {
-				t.Errorf("getDelay() = %v, want %v", result, tt.expected)
+				t.Errorf("GetDelay() = %v, want %v", result, tt.expected)
 			}
 		})
 	}
@@ -177,20 +178,20 @@ func TestModelUpdate(t *testing.T) {
 		updatedModel, _ := m.Update(msg)
 		updated := updatedModel.(model)
 
-		if !updated.paused {
+		if !updated.Paused {
 			t.Error("space should pause the model")
 		}
 	})
 
 	t.Run("space unpauses", func(t *testing.T) {
 		m := newModel("hello world", 300)
-		m.paused = true
+		m.Paused = true
 		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}}
 
 		updatedModel, _ := m.Update(msg)
 		updated := updatedModel.(model)
 
-		if updated.paused {
+		if updated.Paused {
 			t.Error("space should unpause the model")
 		}
 	})
@@ -202,8 +203,8 @@ func TestModelUpdate(t *testing.T) {
 		updatedModel, _ := m.Update(msg)
 		updated := updatedModel.(model)
 
-		if updated.wpm != 350 {
-			t.Errorf("plus should increase wpm to 350, got %d", updated.wpm)
+		if updated.WPM != 350 {
+			t.Errorf("plus should increase WPM to 350, got %d", updated.WPM)
 		}
 	})
 
@@ -214,8 +215,8 @@ func TestModelUpdate(t *testing.T) {
 		updatedModel, _ := m.Update(msg)
 		updated := updatedModel.(model)
 
-		if updated.wpm != 250 {
-			t.Errorf("minus should decrease wpm to 250, got %d", updated.wpm)
+		if updated.WPM != 250 {
+			t.Errorf("minus should decrease WPM to 250, got %d", updated.WPM)
 		}
 	})
 
@@ -226,8 +227,8 @@ func TestModelUpdate(t *testing.T) {
 		updatedModel, _ := m.Update(msg)
 		updated := updatedModel.(model)
 
-		if updated.wpm != 1500 {
-			t.Errorf("wpm should cap at 1500, got %d", updated.wpm)
+		if updated.WPM != 1500 {
+			t.Errorf("WPM should cap at 1500, got %d", updated.WPM)
 		}
 	})
 
@@ -238,8 +239,8 @@ func TestModelUpdate(t *testing.T) {
 		updatedModel, _ := m.Update(msg)
 		updated := updatedModel.(model)
 
-		if updated.wpm != 100 {
-			t.Errorf("wpm should floor at 100, got %d", updated.wpm)
+		if updated.WPM != 100 {
+			t.Errorf("WPM should floor at 100, got %d", updated.WPM)
 		}
 	})
 
@@ -265,21 +266,21 @@ func TestModelUpdate(t *testing.T) {
 		updatedModel, _ := m.Update(msg)
 		updated := updatedModel.(model)
 
-		if updated.currentIndex != 1 {
-			t.Errorf("tick should advance index to 1, got %d", updated.currentIndex)
+		if updated.CurrentIndex != 1 {
+			t.Errorf("tick should advance index to 1, got %d", updated.CurrentIndex)
 		}
 	})
 
 	t.Run("tick doesn't advance when paused", func(t *testing.T) {
 		m := newModel("hello world test", 300)
-		m.paused = true
+		m.Paused = true
 		msg := tickMsg(time.Now())
 
 		updatedModel, _ := m.Update(msg)
 		updated := updatedModel.(model)
 
-		if updated.currentIndex != 0 {
-			t.Errorf("tick should not advance when paused, got index %d", updated.currentIndex)
+		if updated.CurrentIndex != 0 {
+			t.Errorf("tick should not advance when paused, got index %d", updated.CurrentIndex)
 		}
 	})
 
@@ -315,7 +316,7 @@ func TestModelView(t *testing.T) {
 
 	t.Run("shows paused state", func(t *testing.T) {
 		m := newModel("hello world", 300)
-		m.paused = true
+		m.Paused = true
 		view := m.View()
 
 		if !strings.Contains(view, "PAUSED") {
@@ -325,7 +326,7 @@ func TestModelView(t *testing.T) {
 
 	t.Run("shows completion", func(t *testing.T) {
 		m := newModel("hello", 300)
-		m.currentIndex = 0
+		m.CurrentIndex = 0
 		m.quitting = true
 		view := m.View()
 
@@ -365,7 +366,7 @@ func BenchmarkParseText(b *testing.B) {
 	text := strings.Repeat("Hello world this is a test sentence with multiple words. ", 100)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		parseText(text)
+		reader.ParseText(text)
 	}
 }
 
@@ -374,7 +375,7 @@ func BenchmarkGetORPPosition(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for _, word := range words {
-			getORPPosition(word)
+			reader.GetORPPosition(word)
 		}
 	}
 }
