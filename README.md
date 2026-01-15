@@ -13,7 +13,7 @@ A fast, lightweight CLI tool for speed reading using the RSVP (Rapid Serial Visu
 - 🎯 Optimal Recognition Point highlighting
 - ⏯️  Pause/resume controls
 - 📊 Real-time progress tracking
-- 📄 Read from files or stdin
+- 📄 Read from text files (.txt) and EPUB books (.epub) or stdin
 - ⚡ Lightweight and fast
 - 🎨 Clean terminal UI with ANSI colors
 
@@ -60,6 +60,9 @@ make build
 ```bash
 # Read a file
 brr article.txt
+
+# Read an EPUB book
+brr book.epub
 
 # Read from stdin
 cat book.txt | brr
