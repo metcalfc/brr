@@ -1,4 +1,4 @@
-.TH BRR 1 "January 2025" "brr 1.0.0" "User Commands"
+.TH BRR 1 "January 2025" "brr" "User Commands"
 .SH NAME
 brr \- terminal speed reading tool using RSVP technique
 .SH SYNOPSIS
@@ -17,6 +17,9 @@ Set reading speed in words per minute (default: 300). Valid range is 100-1500 WP
 .TP
 .BR \-h ", " \-\-help
 Display help information and exit.
+.TP
+.BR \-v ", " \-\-version
+Display version information and exit.
 .SH CONTROLS
 While reading, the following keyboard controls are available:
 .TP
@@ -28,6 +31,18 @@ Increase reading speed by 50 WPM (up to 1500 WPM maximum).
 .TP
 .B \-
 Decrease reading speed by 50 WPM (down to 100 WPM minimum).
+.TP
+.B \(ua
+Increase reading speed by 50 WPM (up to 1500 WPM maximum).
+.TP
+.B \(da
+Decrease reading speed by 50 WPM (down to 100 WPM minimum).
+.TP
+.B \(<-
+Jump to the previous sentence and pause.
+.TP
+.B \(->
+Jump to the next sentence and pause.
 .TP
 .BR q " or " Q
 Quit the application.
