@@ -8,6 +8,11 @@ on:
 permissions:
   contents: write
 
+env:
+  VERSION: ${{ github.ref_name }}
+  COMMIT: ${{ github.sha }}
+  DATE: ${{ github.event.head_commit.timestamp }}
+
 jobs:
   # Build brr (TUI) and grr for Linux
   build-linux:
@@ -21,6 +26,9 @@ jobs:
         with:
           go-version: "1.21"
 
+      - name: Set build date
+        run: echo "DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
+
       - name: Install Fyne dependencies
         run: |
           sudo apt-get update
@@ -29,14 +37,16 @@ jobs:
       - name: Build brr for Linux
         run: |
           mkdir -p dist
-          GOOS=linux GOARCH=amd64 go build -o dist/brr-linux-amd64 -ldflags="-s -w" main.go
-          GOOS=linux GOARCH=arm64 go build -o dist/brr-linux-arm64 -ldflags="-s -w" main.go
+          LDFLAGS="-s -w -X main.version=${{ env.VERSION }} -X main.commit=${{ github.sha }} -X main.date=${{ env.DATE }}"
+          GOOS=linux GOARCH=amd64 go build -o dist/brr-linux-amd64 -ldflags="$LDFLAGS" main.go
+          GOOS=linux GOARCH=arm64 go build -o dist/brr-linux-arm64 -ldflags="$LDFLAGS" main.go
 
       - name: Build grr for Linux
         env:
           CGO_ENABLED: 1
         run: |
-          GOOS=linux GOARCH=amd64 go build -o dist/grr-linux-amd64 -ldflags="-s -w" grr.go
+          LDFLAGS="-s -w -X main.version=${{ env.VERSION }} -X main.commit=${{ github.sha }} -X main.date=${{ env.DATE }}"
+          GOOS=linux GOARCH=amd64 go build -o dist/grr-linux-amd64 -ldflags="$LDFLAGS" grr.go
 
       - name: Build grr for Linux ARM64
         env:
@@ -44,7 +54,8 @@ jobs:
           CC: aarch64-linux-gnu-gcc
         run: |
           sudo apt-get install -y gcc-aarch64-linux-gnu
-          GOOS=linux GOARCH=arm64 go build -o dist/grr-linux-arm64 -ldflags="-s -w" grr.go
+          LDFLAGS="-s -w -X main.version=${{ env.VERSION }} -X main.commit=${{ github.sha }} -X main.date=${{ env.DATE }}"
+          GOOS=linux GOARCH=arm64 go build -o dist/grr-linux-arm64 -ldflags="$LDFLAGS" grr.go
 
       - name: Create archives
         run: |
@@ -84,25 +95,31 @@ jobs:
         with:
           go-version: "1.21"
 
+      - name: Set build date
+        run: echo "DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
+
       - name: Build brr for macOS
         run: |
           mkdir -p dist
-          GOOS=darwin GOARCH=amd64 go build -o dist/brr-darwin-amd64 -ldflags="-s -w" main.go
-          GOOS=darwin GOARCH=arm64 go build -o dist/brr-darwin-arm64 -ldflags="-s -w" main.go
+          LDFLAGS="-s -w -X main.version=${{ env.VERSION }} -X main.commit=${{ github.sha }} -X main.date=${{ env.DATE }}"
+          GOOS=darwin GOARCH=amd64 go build -o dist/brr-darwin-amd64 -ldflags="$LDFLAGS" main.go
+          GOOS=darwin GOARCH=arm64 go build -o dist/brr-darwin-arm64 -ldflags="$LDFLAGS" main.go
 
       - name: Build grr for macOS Intel
         env:
           CGO_ENABLED: 1
           GOARCH: amd64
         run: |
-          go build -o dist/grr-darwin-amd64 -ldflags="-s -w" grr.go
+          LDFLAGS="-s -w -X main.version=${{ env.VERSION }} -X main.commit=${{ github.sha }} -X main.date=${{ env.DATE }}"
+          go build -o dist/grr-darwin-amd64 -ldflags="$LDFLAGS" grr.go
 
       - name: Build grr for macOS Apple Silicon
         env:
           CGO_ENABLED: 1
           GOARCH: arm64
         run: |
-          go build -o dist/grr-darwin-arm64 -ldflags="-s -w" grr.go
+          LDFLAGS="-s -w -X main.version=${{ env.VERSION }} -X main.commit=${{ github.sha }} -X main.date=${{ env.DATE }}"
+          go build -o dist/grr-darwin-arm64 -ldflags="$LDFLAGS" grr.go
 
       - name: Create archives
         run: |
