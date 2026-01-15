@@ -20,6 +20,13 @@ import (
 	"github.com/metcalfc/brr/internal/reader"
 )
 
+// Version info (injected via ldflags)
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 type model struct {
 	*reader.Reader
 	fontSize float32
@@ -128,6 +135,7 @@ func (l *centerVerticalLayout) Layout(objects []fyne.CanvasObject, size fyne.Siz
 
 func main() {
 	wpm := flag.Int("w", 300, "Words per minute")
+	showVersion := flag.Bool("v", false, "Show version information")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Grr - GUI Speed Reading Tool\n\n")
 		fmt.Fprintf(os.Stderr, "Usage:\n")
@@ -140,6 +148,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  cat file.txt | grr        Read from stdin\n")
 	}
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("grr %s (commit: %s, built: %s)\n", version, commit, date)
+		os.Exit(0)
+	}
 
 	var text string
 

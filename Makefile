@@ -3,6 +3,12 @@
 
 .PHONY: all build brr grr test clean install uninstall fmt lint help
 
+# Version info for dev builds
+VERSION ?= dev
+COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
+DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+LDFLAGS := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
+
 # Default target
 all: build
 
@@ -11,11 +17,11 @@ build: brr grr
 
 # Build the CLI application
 brr:
-	go build -o brr .
+	go build -ldflags "$(LDFLAGS)" -o brr .
 
 # Build the GUI application (requires Fyne)
 grr:
-	go build -tags gui -o grr .
+	go build -tags gui -ldflags "$(LDFLAGS)" -o grr .
 
 # Run tests
 test:

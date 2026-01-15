@@ -15,6 +15,13 @@ import (
 	"github.com/metcalfc/brr/internal/reader"
 )
 
+// Version info (injected via ldflags)
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 var (
 	erpStyle = lipgloss.NewStyle().
 			Bold(true).
@@ -242,6 +249,7 @@ func newModel(text string, wpm int) model {
 
 func main() {
 	wpm := flag.Int("w", 300, "Words per minute (default: 300)")
+	showVersion := flag.Bool("v", false, "Show version information")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Brr - Terminal Speed Reading Tool\n\n")
 		fmt.Fprintf(os.Stderr, "Usage:\n")
@@ -261,6 +269,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  Q        Quit\n")
 	}
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("brr %s (commit: %s, built: %s)\n", version, commit, date)
+		os.Exit(0)
+	}
 
 	var text string
 
