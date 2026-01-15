@@ -174,17 +174,11 @@ jobs:
           generate_release_notes: true
           draft: false
 
-  # Update Homebrew formula with new version and checksums
-  update-formula:
+  # Update Homebrew tap with new version and checksums
+  update-homebrew-tap:
     needs: [release]
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: master
-          token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Download artifacts for checksums
         uses: actions/download-artifact@v4
         with:
@@ -196,6 +190,13 @@ jobs:
         with:
           name: linux-builds
           path: dist/
+
+      - name: Checkout homebrew tap
+        uses: actions/checkout@v4
+        with:
+          repository: metcalfc/homebrew-brr
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
 
       - name: Update formula
         env:
@@ -210,7 +211,7 @@ jobs:
           LINUX_ARM64_SHA=$(sha256sum dist/brr_${TAG}_linux_arm64.tar.gz | cut -d' ' -f1)
 
           # Generate formula
-          cat > brr.rb << FORMULA
+          cat > homebrew-tap/Formula/brr.rb << FORMULA
           class Brr < Formula
             desc "Terminal speed reading tool using RSVP technique"
             homepage "https://github.com/metcalfc/brr"
@@ -250,13 +251,14 @@ jobs:
           FORMULA
 
           # Remove leading whitespace from heredoc
-          sed -i 's/^          //' brr.rb
-          cat brr.rb
+          sed -i 's/^          //' homebrew-tap/Formula/brr.rb
+          cat homebrew-tap/Formula/brr.rb
 
-      - name: Commit and push
+      - name: Commit and push to tap
         run: |
+          cd homebrew-tap
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add brr.rb
-          git commit -m "Update Homebrew formula for ${GITHUB_REF_NAME}"
-          git push origin master
+          git add Formula/brr.rb
+          git commit -m "Update brr to ${GITHUB_REF_NAME}"
+          git push
