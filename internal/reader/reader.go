@@ -4,6 +4,7 @@ package reader
 import (
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Reader holds the state for an RSVP speed reading session.
@@ -56,9 +57,9 @@ func FindSentenceStarts(words []string) []int {
 }
 
 // GetORPPosition returns the Optimal Recognition Point index for a word.
-// This is the character position where the eye should focus for fastest recognition.
+// This is the character (rune) position where the eye should focus for fastest recognition.
 func GetORPPosition(word string) int {
-	length := len(word)
+	length := utf8.RuneCountInString(word)
 	if length <= 1 {
 		return 0
 	} else if length <= 5 {

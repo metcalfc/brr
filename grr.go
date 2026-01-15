@@ -47,13 +47,22 @@ func newModel(text string, wpm int, toc []reader.TOCEntry, chapters []reader.Cha
 }
 
 func createWordDisplay(word string, fontSize float32, windowWidth float32) *fyne.Container {
+	runes := []rune(word)
 	orp := reader.GetORPPosition(word)
 
-	before := word[:orp]
-	focus := string(word[orp])
+	// Ensure orp is within bounds
+	if orp >= len(runes) {
+		orp = len(runes) - 1
+	}
+	if orp < 0 {
+		orp = 0
+	}
+
+	before := string(runes[:orp])
+	focus := string(runes[orp])
 	after := ""
-	if orp+1 < len(word) {
-		after = word[orp+1:]
+	if orp+1 < len(runes) {
+		after = string(runes[orp+1:])
 	}
 
 	beforeText := canvas.NewText(before, color.White)

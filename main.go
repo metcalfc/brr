@@ -350,13 +350,22 @@ func (m model) renderTOCPanel(width, height int) string {
 }
 
 func formatWord(word string) string {
+	runes := []rune(word)
 	orp := reader.GetORPPosition(word)
 
-	before := word[:orp]
-	focus := string(word[orp])
+	// Ensure orp is within bounds
+	if orp >= len(runes) {
+		orp = len(runes) - 1
+	}
+	if orp < 0 {
+		orp = 0
+	}
+
+	before := string(runes[:orp])
+	focus := string(runes[orp])
 	after := ""
-	if orp+1 < len(word) {
-		after = word[orp+1:]
+	if orp+1 < len(runes) {
+		after = string(runes[orp+1:])
 	}
 
 	return wordBeforeStyle.Render(before) +
